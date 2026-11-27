@@ -6889,8 +6889,7 @@ class UIManager {
                 okPerMin: e.effectiveOrdersPerMin != null ? e.effectiveOrdersPerMin : null,
                 okPerDecision: m.okPerDecision != null ? m.okPerDecision : null,
                 parallelRate: m.parallelRate != null ? m.parallelRate : null,
-                lost: (e.failedRequests || 0) + (e.cancelledRequests || 0) + (e.missedRounds || 0),
-                failed: e.failedRequests || 0, cancelled: e.cancelledRequests || 0, missed: e.missedRounds || 0,
+                ...UIManager.requestsLost(e),
                 loops: tr && tr.judged ? (tr.counts.loop || 0) : null,
                 topErrors
             };
@@ -7138,6 +7137,17 @@ class UIManager {
     // The normal pace, also on a page that does not load game.js (the Platform's viewer
     // drives this file with a stand-in game; b1031).
     static normalSimSpeed() { return (typeof Game !== 'undefined' && Game.NORMAL_SIM_SPEED) || 2; }
+    // The requests of a seat that came to nothing, as the comparison boards count them
+    // (b1305): those that failed and the rounds it missed. NOT the ones the game cut off
+    // itself. When a match ends every seat is asked for its closing words and the turn
+    // request it still had out is aborted; the same happens to a seat that is eliminated
+    // while it thinks. The harness files both as `request_cancelled`, and they were added
+    // in here: a seat that was thinking when the match ended showed one lost request
+    // more than one that had just answered. They are kept apart, for the tip to name.
+    static requestsLost(e) {
+        const failed = (e && e.failedRequests) || 0, missed = (e && e.missedRounds) || 0, cancelled = (e && e.cancelledRequests) || 0;
+        return { lost: failed + missed, failed, cancelled, missed };
+    }
     simSpeedLabel(v) {
         const d = Number(v) / UIManager.normalSimSpeed();
         return d === 0.5 ? '½' : d.toLocaleString(typeof getUiLang === 'function' ? getUiLang() : 'en');

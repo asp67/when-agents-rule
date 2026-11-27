@@ -418,8 +418,7 @@
             recovery: g.recoveryRate != null ? g.recoveryRate : (g.repeatRate != null ? 1 - g.repeatRate : null),
             drift: s.drift || null,
             batch: (s.macro && s.macro.batch) || null,
-            lost: (e.failedRequests || 0) + (e.cancelledRequests || 0) + (e.missedRounds || 0),
-            failed: e.failedRequests || 0, cancelled: e.cancelledRequests || 0, missed: e.missedRounds || 0
+            ...UIManager.requestsLost(e)
         };
     };
 
