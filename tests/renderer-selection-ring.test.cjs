@@ -62,3 +62,17 @@ test('an inspected tower or trebuchet shows its reach, the rules\' own, and noth
     assert.deepEqual(frame(ctx, { ...none, selectedUnits: [Object.assign({}, simple, { health: 0 })] }), []);
 });
 
+test('a hit flashed before the first frame finds a camera', () => {
+    const ctx = load(), r = Object.create(ctx.EngineRenderer.prototype);
+    Object.assign(r, { cameraTarget: { x: 0, y: 0, z: 0 }, _halfH: 34, _yaw: Math.PI / 4, _pitch: Math.atan(0.5), W: 1600, H: 900,
+        graphicsQuality: 'balanced', _reducedMotion: false, terrain: { size: 800 } });
+    assert.equal(r._cam, undefined, 'no frame has been drawn');
+    assert.equal(r._cull(0, 0, 4), false, 'the middle of the opening view is in the picture');
+    assert.equal(r._cull(5000, 5000, 4), true);
+    const r2 = Object.create(ctx.EngineRenderer.prototype);
+    Object.assign(r2, { cameraTarget: { x: 0, y: 0, z: 0 }, _halfH: 34, _yaw: Math.PI / 4, _pitch: Math.atan(0.5), W: 1600, H: 900,
+        graphicsQuality: 'balanced', _reducedMotion: false, terrain: { size: 800 }, _particles: null, _rings: [], buildings: [], units: [] });   // the lists as the constructor leaves them
+    assert.ok(r2._fxLevel() > 0, 'this tier draws sparks, so the flash asks whether the hit is in the picture');
+    const unit = { x: 3, z: 2, health: 40, maxHealth: 40 };
+    assert.doesNotThrow(() => r2.flashHit(unit), 'the rules call this as a blow lands, first tick included');
+});

@@ -2917,7 +2917,10 @@
         // the bottom edge gets extra headroom because a tall object's top can
         // lean into view while its ground point is already below the frustum.
         _cull(x, z, margin) {
-            const c = this._cam;
+            // Asked before the first frame too: the rules flash a hit as it lands
+            // (flashHit), and a blow in the first tick found no camera here and threw,
+            // inside the rules' own step.
+            const c = this._cam || this._computeCam();
             const v = c.view;
             const vx = v[0] * x + v[8] * z + v[12];   // (x, 0, z) — ground point
             const vy = v[1] * x + v[9] * z + v[13];
