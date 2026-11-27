@@ -178,6 +178,26 @@ class Director {
         this._siege = new Map();
     }
 
+    // A new match on the same page (a series, a rematch, a replay jumped back): nothing
+    // the last one showed is known. The sites it had shown and the ages its seats had
+    // reached stayed, keyed by ids the next match uses again -- so a building going up
+    // under an id already seen got no shot, and a seat back in the Stone Age read as
+    // having changed age, which started a compare sweep in the first second.
+    newMatch() {
+        this.reset();
+        this._sites.clear();
+        this._prevAge.clear();
+        this.lastSeen.clear();
+        this.lastOverview = 0;
+    }
+    // The match clock starts at zero with every match, so one that runs backward is
+    // another match. Asked here and not told by the game: the director reads a world.
+    _matchWatch() {
+        const g = this.game, clock = g && typeof g.simNow === 'function' ? g.simNow() : null;
+        if (clock != null && this._clockSeen != null && clock < this._clockSeen) this.newMatch();
+        this._clockSeen = clock;
+    }
+
     encounterAt(x, z, now) {
         let e = this.encounters.find(f => now - f.seenAt < 2500
             && Math.hypot(f.x - x, f.z - z) < 70);
@@ -870,6 +890,7 @@ class Director {
     // ---- the loop ----------------------------------------------------------
     update(now) {
         const g = this.game;
+        this._matchWatch();
 
         // The spectator picked something: that outranks every opinion here.
         if (g._camFollow) {
