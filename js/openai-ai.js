@@ -5512,7 +5512,10 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                     continue;
                 }
 
-                const fix = (response.status === 400 && !adapted && !controller._strict)
+                // 422 as 400 (b1302): a server that validates the body itself (FastAPI:
+                // vLLM, SGLang and others) refuses an unknown field with 422, in the same
+                // words. Whether there is anything to leave out is the text's to say.
+                const fix = ((response.status === 400 || response.status === 422) && !adapted && !controller._strict)
                     ? OpenAIAIManager.adaptToApiError(model._reqOpts, errorText, model) : null;
                 // Hint FIRST: the spectator log truncates at 90 characters, and a
                 // provider's error body will happily eat all of them on its own.
