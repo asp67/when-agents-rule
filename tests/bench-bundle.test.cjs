@@ -147,3 +147,52 @@ test('verify replays on the bench core the bundle recorded', async () => {
     assert.equal(typeof B.loadCore(blob.text).play, 'function');
     assert.deepEqual((await B.verify(lines)).problems, []);
 });
+
+// ---- b1283 -------------------------------------------------------------------------------
+// A bundle is made to be handed to others. The command line wrote the seat file into its
+// header as it was read, credentials included; only the page blanked them.
+test('a model run\'s bundle carries no credentials', async () => {
+    const KEY = 'sk-SECRET-KEY-0123456789';
+    const CFG = { name: 'stub', endpoint: 'http://127.0.0.1:9/v1', model: 'stub-model', maxTokens: 512, reqOpts: { temperature: 0.4 },
+        auth: { type: 'bearer', key: KEY, headers: [{ name: 'X-Api-Key', value: KEY }] } };
+    const make = (s, v, a, wire) => {
+        const body = JSON.stringify({ choices: [{ message: { role: 'assistant', content: null,
+            tool_calls: [{ id: 'c0', type: 'function', function: { name: 'wait', arguments: '{"reason":"hold"}' } }] }, finish_reason: 'tool_calls' }], usage: {} });
+        return modelPolicy(CFG, { fetchImpl: B.recordingFetch(async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => body }), wire) });
+    };
+    const one = ALL.filter(s => s.id === 'strike-01');
+    const streamed = [];
+    const lines = await B.record({ scenarios: one, variants: ['identity'], policy: { name: 'stub', kind: 'model', config: CFG, make }, onLine: l => streamed.push(l) });
+    assert.ok(!lines.join('\n').includes(KEY), 'the key is nowhere in the bundle');
+    assert.ok(!streamed.join('\n').includes(KEY), 'nor in the lines streamed to disk as it is made');
+    const head = JSON.parse(lines[0]);
+    assert.deepEqual(head.policy.config.auth, { type: 'none' });
+    assert.equal(head.policy.config.endpoint, CFG.endpoint, 'the rest of the declared config is there');
+    assert.equal(CFG.auth.key, KEY, 'and the seat file read by the run is untouched');
+    assert.deepEqual((await B.verify(lines)).problems, [], 'it still replays: a request carries no credentials in its body');
+});
+
+// "Verified" used to mean that a bundle agrees with the code it carries. A bundle may
+// carry any code: one whose scorer pays 1 for everything verified with the honest rules'
+// fingerprint. And that code was run to find out.
+test('a bundle that carries other code than this checkout is not run, and says so', async () => {
+    const one = ALL.filter(s => s.id === 'strike-01');
+    const sources = B.ruleSources();
+    const needle = 'function episodeScore(r) { return ';
+    assert.ok(sources[B.CORE_FILE].includes(needle), 'the scorer is where this test expects it');
+    const forgedSources = Object.assign({}, sources, { [B.CORE_FILE]: sources[B.CORE_FILE].replace(needle, 'function episodeScore(r) { globalThis.__ran = true; return 1; return ') });
+    const policy = { name: 'noop', kind: 'baseline', make: BASELINES.noop };
+    const lines = await B.record({ scenarios: one, variants: ['identity'], attempts: 1, policy, sources: forgedSources });
+    const v = await B.verify(lines);
+    assert.equal(v.ok, false);
+    assert.deepEqual(v.foreign, [B.CORE_FILE]);
+    assert.equal(v.notRun, true);
+    assert.match(v.problems.join('\n'), /carries code that is not this checkout's: js\/bench-core\.js/);
+    // Asked to, it replays on the bundle's own code and says whose word the result is.
+    const own = await B.verify(lines, { foreignCode: true });
+    assert.deepEqual(own.foreign, [B.CORE_FILE]);
+    assert.equal(own.notRun, undefined);
+    // An honest bundle of this checkout has no foreign code.
+    const honest = await B.verify(await B.record({ scenarios: one, variants: ['identity'], attempts: 1, policy }));
+    assert.equal(honest.ok, true); assert.deepEqual(honest.foreign, []);
+});

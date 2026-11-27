@@ -30,6 +30,8 @@ arenaConfig*.json
 
 # WAR Bench outputs (tools/bench/war-bench.cjs)
 *.warbench.jsonl.gz
+# ...and the plain lines war-bench streams while a run is under way (kept if it is interrupted)
+*.partial.jsonl
 *.report.html
 
 # Local agent skill mirror (private production procedure — never publish)

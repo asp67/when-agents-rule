@@ -1131,14 +1131,20 @@ function bundleChain(sha, onLine = null) {
     return { lines, push(rec) { const line = JSON.stringify(Object.assign({ prev }, rec)); lines.push(line); prev = sha(line); if (onLine) onLine(line); } };
 }
 // The header and every blob: the rule sources ({path: text}, line endings normalized)
-// and the scenarios. `policy` = {name, kind, config}; a model's config carries no
-// credentials.
+// and the scenarios. `policy` = {name, kind, config}; a model's config goes in without
+// its credentials, whoever the caller is (b1283). A bundle is made to be handed on, and
+// a reader needs to know which endpoint and settings played, never the key. The page
+// blanked them itself; the command line did not, and wrote the seat file's key into the
+// first line of the bundle and of the partial file it streams.
+function publicConfig(config) {
+    return config && typeof config === 'object' ? Object.assign({}, config, { auth: { type: 'none' } }) : null;
+}
 function bundleOpen(chain, { sha, sources, scenarios, policy, label = null, ceilingMs = CEILING_MS, variants = null, attempts = 1, coreHash, extra = null }) {
     const files = {};
     for (const [p, text] of Object.entries(sources)) files[p] = sha(text);
     for (const s of scenarios) files['scenario:' + s.id] = sha(JSON.stringify(s));
     chain.push(Object.assign({ type: 'header', schema: BUNDLE_SCHEMA, protocol: { scenario: SCHEMA, roundMs: ROUND_MS, ceilingMs },
-           policy: { name: policy.name, kind: policy.kind, config: policy.config || null }, label,
+           policy: { name: policy.name, kind: policy.kind, config: publicConfig(policy.config) }, label,
            coreHash, harnessHash: sha(sources['js/openai-ai.js']), files,
            scenarios: scenarios.map(s => s.id), variants, attempts }, extra || {}));
     const blobs = new Map();

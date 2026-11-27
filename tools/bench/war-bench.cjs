@@ -6,11 +6,13 @@
 //        [--attempts N] [--variants identity,rot90,...] [--out run.warbench.jsonl.gz]
 //   node tools/bench/war-bench.cjs run --model seat.json [--label "methodology preview"] ...
 //        a model seat (v0b): {name, endpoint, model, provider, maxTokens, contextSize,
-//        reqOpts: {temperature, extraBody, ...}} -- the declared config goes in the bundle
+//        reqOpts: {temperature, extraBody, ...}} -- the declared config goes in the bundle,
+//        without its credentials
 //   node tools/bench/war-bench.cjs calibrate --model seat.json
 //        one real round at production size: status, latency, tokens, tool calls
-//   node tools/bench/war-bench.cjs verify <bundle>        replay it on its own rules
-//   node tools/bench/war-bench.cjs report <bundle> [--out report.html]
+//   node tools/bench/war-bench.cjs verify <bundle> [--foreign-code]   replay it
+//        a bundle whose code is not this checkout's is not run without the flag
+//   node tools/bench/war-bench.cjs report <bundle> [--out report.html] [--foreign-code]
 const fs = require('node:fs');
 const path = require('node:path');
 const S = require('./scenario.cjs');
@@ -28,6 +30,33 @@ function args(argv) {
 }
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// The usage text is this file's opening comment, all of it.
+function usage() {
+    const lines = fs.readFileSync(__filename, 'utf8').split('\n');
+    const from = lines.findIndex(l => l.startsWith('//   node ')), to = lines.findIndex((l, i) => i > from && !l.startsWith('//'));
+    return lines.slice(from, to).map(l => l.replace(/^\/\/ ?/, '')).join('\n');
+}
+// The bundle a command was given, or the usage and an error that says what is missing.
+function bundleArg(a) {
+    const file = a._[1];
+    if (typeof file !== 'string' || !file) throw new Error('war-bench ' + a._[0] + ' needs a bundle file.\n\n' + usage());
+    if (!fs.existsSync(file)) throw new Error('no such bundle: ' + file);
+    return file;
+}
+// The seat file of --model, read; or an error that says what is missing.
+function seatArg(a) {
+    if (typeof a.model !== 'string' || !a.model) throw new Error('war-bench ' + a._[0] + ' needs --model seat.json.\n\n' + usage());
+    if (!fs.existsSync(a.model)) throw new Error('no such seat file: ' + a.model);
+    return JSON.parse(fs.readFileSync(a.model, 'utf8'));
+}
+// What a verification found, in one line (or the problems, one a line).
+function verdictLine(v) {
+    if (!v.ok) return (v.notRun ? 'NOT RUN:\n  ' : 'FAILED:\n  ') + v.problems.join('\n  ');
+    return v.foreign && v.foreign.length
+        ? `replays identically ON ITS OWN CODE, which is not this checkout's (${v.foreign.join(', ')}): ${v.episodes} episodes. The scores are that code's word.`
+        : `verified: ${v.episodes} episodes replay identically (core ${v.coreHash.slice(0, 16)})`;
+}
 const pct = p => p == null ? '–' : (100 * p).toFixed(1) + '%';
 const ci = w => w && w.p != null ? `${pct(w.p)} <span class="ci">[${pct(w.lo)}, ${pct(w.hi)}]</span> <span class="n">${w.k}/${w.n}</span>` : '–';
 
@@ -38,7 +67,9 @@ function reportHtml(lines, verification) {
     const episodes = recs.filter(r => r.type === 'end');
     const rows = obj => Object.entries(obj).map(([k, w]) => `<tr><td>${esc(k)}</td><td>${ci(w)}</td></tr>`).join('');
     const verdict = verification
-        ? (verification.ok ? '<p class="ok">Verified: every episode replays identically on the rules embedded in this bundle.</p>'
+        ? (verification.ok ? (verification.foreign && verification.foreign.length
+                ? `<p class="bad">Replays identically on the code this bundle carries, which is NOT the code of the checkout that made this report (${esc(verification.foreign.join(', '))}). The scores are that code's word.</p>`
+                : '<p class="ok">Verified: every episode replays identically on the rules embedded in this bundle, which are this checkout\'s.</p>')
             : `<p class="bad">Verification FAILED:</p><ul>${verification.problems.slice(0, 20).map(p => `<li>${esc(p)}</li>`).join('')}</ul>`)
         : '<p class="n">Not verified in this report. Run <code>war-bench verify</code>.</p>';
     return `<!doctype html>
@@ -82,7 +113,7 @@ async function main() {
         const variants = a.variants ? String(a.variants).split(',') : null;
         let policy, name;
         if (a.model) {
-            const cfg = JSON.parse(fs.readFileSync(a.model, 'utf8'));
+            const cfg = seatArg(a);
             name = cfg.name;
             policy = { name, kind: 'model', config: cfg,
                        make: (s, v, att, wire) => modelPolicy(cfg, { fetchImpl: B.recordingFetch(globalThis.fetch, wire) }) };
@@ -105,7 +136,7 @@ async function main() {
         const sc = JSON.parse(lines[lines.length - 1]).score;
         console.log(`${name}: ${sc.episodes} episodes, score ${sc.meanScore.mean.toFixed(2)} [${sc.meanScore.lo.toFixed(2)}, ${sc.meanScore.hi.toFixed(2)}], success ${pct(sc.success.p)} [${pct(sc.success.lo)}, ${pct(sc.success.hi)}] -> ${out}`);
     } else if (cmd === 'calibrate') {
-        const cfg = JSON.parse(fs.readFileSync(a.model, 'utf8'));
+        const cfg = seatArg(a);
         const s = S.loadAll().find(x => x.id === (a.scenario || 'recover-01'));
         const ep = await S.begin(s, 'identity');
         const wire = [];
@@ -121,17 +152,20 @@ async function main() {
             promptTokens: usage && usage.prompt_tokens, completionTokens: usage && usage.completion_tokens,
             lastResult: ep.subjectController.lastActionResult ? String(ep.subjectController.lastActionResult).slice(0, 160) : null }));
     } else if (cmd === 'verify') {
-        const v = await B.verify(B.readLines(a._[1]));
-        console.log(v.ok ? `verified: ${v.episodes} episodes replay identically (core ${v.coreHash.slice(0, 16)})` : 'FAILED:\n  ' + v.problems.join('\n  '));
+        const v = await B.verify(B.readLines(bundleArg(a)), { foreignCode: !!a['foreign-code'] });
+        console.log(verdictLine(v));
         process.exitCode = v.ok ? 0 : 1;
     } else if (cmd === 'report') {
-        const lines = B.readLines(a._[1]);
-        const v = await B.verify(lines);
-        const out = a.out || a._[1].replace(/\.warbench\.jsonl\.gz$/, '') + '.report.html';
+        const file = bundleArg(a), lines = B.readLines(file);
+        const v = await B.verify(lines, { foreignCode: !!a['foreign-code'] });
+        if (v.notRun) { console.log(verdictLine(v)); process.exitCode = 1; return; }
+        const out = a.out || file.replace(/\.warbench\.jsonl\.gz$/, '') + '.report.html';
         fs.writeFileSync(out, reportHtml(lines, v));
-        console.log(`${v.ok ? 'verified' : 'NOT verified'}; report -> ${out}`);
+        console.log(`${verdictLine(v)}\nreport -> ${out}`);
+        // A report of a run that does not verify is still written, and still a failure.
+        process.exitCode = v.ok ? 0 : 1;
     } else {
-        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(3, 9).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+        console.log(usage());
         process.exitCode = cmd ? 1 : 0;
     }
 }

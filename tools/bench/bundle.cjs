@@ -146,7 +146,15 @@ function readLines(file) {
 }
 
 // Check a bundle: the chain, the blobs, and a full replay on the embedded rules.
-async function verify(lines) {
+//
+// The code a bundle embeds is run to replay it, and "verified" is that code's word. So a
+// bundle whose code is not this checkout's (b1283) is not run and not vouched for unless
+// the caller asks ({ foreignCode: true }): it used to be loaded and run whatever it was,
+// and a bundle whose scorer pays 1 for everything verified, under the honest rules'
+// fingerprint, because the scorer is no part of that fingerprint. `foreign` lists the
+// files that differ. An older build's honest bundle is foreign too: replay it from a
+// checkout of its commit, or with the flag, knowing whose word the result then is.
+async function verify(lines, { foreignCode = false } = {}) {
     const problems = [];
     const say = m => { problems.push(m); };
     let prev = null;
@@ -173,6 +181,13 @@ async function verify(lines) {
     }
     if (coreHashOf(sources) !== head.coreHash) say('the embedded rules do not hash to the recorded core hash');
     if (problems.length) return { ok: false, problems };
+    const here = ruleSources();
+    const foreign = Object.keys(sources).filter(p => here[p] !== sources[p]);
+    if (foreign.length && !foreignCode) {
+        return { ok: false, foreign, notRun: true, coreHash: head.coreHash, policy: head.policy.name,
+                 problems: ['the bundle carries code that is not this checkout\'s: ' + foreign.join(', ')
+                     + '. It was not run. Replay it from a checkout of its own commit, or pass --foreign-code to run its code and take its word.'] };
+    }
     // The bench core the run was played by, when the bundle carries it.
     const Wv = sources[CORE_FILE] ? loadCore(sources[CORE_FILE]) : W;
     const makeRealm = () => new Realm({ seed: 1, sources, core: Wv });
@@ -221,7 +236,7 @@ async function verify(lines) {
     if (!close || close.type !== 'close') say('no closing record');
     else if (JSON.stringify(Wv.score(results)) !== JSON.stringify(close.score)) say('the replayed score differs from the recorded one');
     if (problems.length && Wv === W) problems.push('note: this bundle predates b1097 and carries no bench core, so it was replayed by today\'s; a difference may be a later fix to the bench rather than a change to the run');
-    return { ok: !problems.length, problems, episodes: results.length, coreHash: head.coreHash, policy: head.policy.name,
+    return { ok: !problems.length, problems, foreign, episodes: results.length, coreHash: head.coreHash, policy: head.policy.name,
              score: close && close.score };
 }
 
