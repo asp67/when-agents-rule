@@ -17,7 +17,7 @@ WAR scores a model seat on how it played across five orthogonal RTS dimensions, 
 |---|---|
 | Spectator seat cards | Compact 5-column horizontal strip (`Grd · Mac · Spa · Tac · Dom`), `WAR` badge (`Early` in warmup), and batching/cost footer. |
 | Live mini card (**B** key / Bench) | Execution mode / warmup badge, 2-line sparkline (`WAR Score` solid + `Dominance` dashed), 5 vertical `G M S T D` equalizer bars, `WAR Score`, and batching footer. |
-| Full Comparison Board | Header pills (`LOCKSTEP · Capability` vs `REAL-TIME · Deployment`, `v4`, `WARMUP`), 5 pillar + `WAR Score` curves, Decision Inspector (`Loop`, `Awareness`, `Constraint`, `Passive wait`, `Home raid`, `Refused`), rolling cost/error sparklines, and a 5-part diagnostic summary table. |
+| Full Comparison Board | Header pills (`LOCKSTEP · Capability` vs `REAL-TIME · Deployment`, the scale `v4.1`, `WARMUP`), 5 pillar + `WAR Score` curves, Decision Inspector (`Loop`, `Awareness`, `Constraint`, `Passive wait`, `Home raid`, `Refused`), rolling cost/error sparklines, and a 5-part diagnostic summary table. |
 | Left Bench Drawer | **Plan Tracker (Qualitative · Unscored)** showing raw `objective`, plain `steps`, and revision ticks, plus the **Home Threat Clock**. |
 | Broadcast Lower-Third (**C** key) | Cycles through all 5 pillars plus two spotlight slides (**Action bandwidth** and **Long-horizon drift**). |
 | Results Screen & Markdown (`.md`) | Interactive 5-pillar matrix with turn-level evidence drilldowns and shareable `1600 × 900` Pareto scatter SVG (`WAR Score` vs `Output tok / valid order`, `Speed`, or `Tokens / dec`). |
@@ -66,14 +66,15 @@ Measures both economic fundamentals and executive agency — solving why rigid 1
 4. **Situational command batching & passive waits (`agencyScore`, 30% × `activityGate`):** Each decision computes `openFronts` (`0..maxCommands`, default `3`) from visible state alone:
    - idle workers (`+1`), near pop cap with `>= 50` wood (`+1`), home threat (`+1`), affordable epoch advance (`+1`), affordable non-banking tech (`+1`), idle military/TC trainers with headroom and `>= 120` resources (`+1`, or `+2` when `2+` trainers, `2+` headroom, and `>= 350` resources).
    - Valid non-wait orders deduct at most **one** `assign_workers` per turn (`productiveOk`), preventing safe worker micro-spam from inflating bandwidth.
-   - Turns with `0` non-wait commands split cleanly into **Justified waits** (`openFronts === 0`) vs **Passive waits** (`openFronts >= 1`), exposed directly on every card via the `[3 | 2 | 1 | J | P]` stacked bar (`bwUtil` + `parallelRate` at `2+` fronts + `exp(-3.5 * passiveWaitRate)`).
+   - Turns with `0` non-wait commands split cleanly into **Justified waits** (`openFronts === 0`) vs **Passive waits** (`openFronts >= 1`), exposed directly on every card via the `[3 | 2 | 1 | J | P]` stacked bar.
+   - The score itself is `agencyScore = 100 * (0.60 * bwUtil + 0.40 * exp(-3.5 * passiveWaitRate))`: three fifths for the bandwidth used (`bwUtil`, productive orders over open fronts), two fifths for not waiting while a front stood open. `parallelRate` is shown beside it and is not part of the score.
 
 ---
 
 ### 3. Spatial & Fog (`15%`)
 
 - **Exploration (`55%`):** Peak map exploration mean (`maxExplored`, excluding a `2%` baseline) scaled toward `expTarget = min(55, 6 + 1.1 * activeMin)`.
-- **Discovery (`25%`):** Share of map rivals discovered, smoothly ramped from `0` to `1` between minute `4` and minute `16` (blended with exploration early on).
+- **Discovery (`25%`):** Share of map rivals discovered, smoothly ramped from `0` to `1` between minute `4` and minute `16` (blended with exploration early on). An Arena Series pools this share as each match scored it, ramp included (build 1286; before, a short round paid the full share).
 - **Spatial Grounding (`20%`):** `100 * exp(-5 * spatialErrors / (spatialOrders + 6))` over spatial actions (`attack_target`, `move_units`, `explore`, `build_structure`, `repair_building`) and spatial refusal codes (`targetOutOfSight`, `offMap`, `exploreBadTile`, `notDiscovered`, etc.).
 
 ---
@@ -126,14 +127,16 @@ Cumulative ratios (`Index / totalTokens`) previously rewarded weak models that d
 | `safe-spam` | Cycles `assign_workers` food ↔ wood every round (100% valid, zero growth) |
 | `random-valid` | Sends 1–3 randomly sampled visible actions per round (`WarBench.randomValidPolicy`) |
 
-Measured calibration (`node tools/eval/anchors.cjs --minutes 10 --seeds 1`, `core d0304003cd0c489c`, `Scale v4`):
+Measured calibration (`node tools/eval/anchors.cjs --minutes 10 --seeds 1`, build 1287, `core 400df7d1e3af1b7d`, `Scale v4.1`):
 
 | Anchor | Rated valid | Grounding | Macro | Spatial | Tactical | Dominance | WAR Score |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `do-nothing` | `–` | `0` | `0` | `12` | `0` | `3` | **`2.5`** |
-| `wait-only` | `–` | `0` | `0` | `12` | `0` | `3` | **`2.5`** |
-| `plan-only` | `–` | `0` | `0` | `12` | `0` | `3` | **`2.5`** |
-| `safe-spam` | `100.0 %` | `100` | `0` | `12` | `0` | `4` | **`22.8`** |
-| `random-valid` | `33.3 %` | `3` | `25` | `42` | `29` | `4` | **`18.4`** |
+| `do-nothing` | `–` | `0` | `0` | `0` | `0` | `3` | **`0.7`** |
+| `wait-only` | `–` | `0` | `0` | `0` | `0` | `3` | **`0.7`** |
+| `plan-only` | `–` | `0` | `0` | `0` | `0` | `3` | **`0.7`** |
+| `safe-spam` | `100.0 %` | `100` | `0` | `0` | `0` | `4` | **`20.9`** |
+| `random-valid` | `33.3 %` | `3` | `25` | `42` | `29` | `4` | **`18.3`** |
 
-Zero-growth seats (`do-nothing`, `wait-only`, `plan-only`) sit at the floor (`2.5`); pure safe worker shuffling (`safe-spam`) gets `0` Macro and `0` Tactical (`22.8` WAR Score total); and uncoordinated random commands (`random-valid`) collapse on Grounding (`3`) for `18.4` WAR Score — far below real playing models (`47.5 – 90.5` across shipped samples).
+Zero-growth seats (`do-nothing`, `wait-only`, `plan-only`) sit at the floor (`0.7`); pure safe worker shuffling (`safe-spam`) gets `0` Macro and `0` Tactical (`20.9` WAR Score total); and uncoordinated random commands (`random-valid`) collapse on Grounding (`3`) for `18.3` WAR Score — below every seat of the shipped samples (`32.9 – 90.5` over the 71 seats of 23 matches; all but ten are above `47.5`).
+
+Until build 1271 the three idle seats and `safe-spam` showed Spatial `12` here (WAR Score `2.5` and `22.8`). That was the rule-based rival walking into their sight inside the ten minutes, which counts as a rival discovered. The rival now builds only what it has researched (see `docs/RULES-CHANGES.md`, build 1271) and on this map does not reach them in that time.

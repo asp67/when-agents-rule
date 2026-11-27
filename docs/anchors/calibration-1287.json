@@ -1,0 +1,2909 @@
+{
+ "tool": "anchor-calibration",
+ "coreHash": "400df7d1e3af1b7dccfd463bec5affb1fddf81ea2b60faa4e436a2d4c50a6359",
+ "contractIdentical": false,
+ "minutes": 45,
+ "seeds": 8,
+ "margin": 5,
+ "civs": [
+  "greek",
+  "persian"
+ ],
+ "order": [
+  "legion",
+  "standard",
+  "turtle",
+  "raider"
+ ],
+ "points": {
+  "standard": 29,
+  "turtle": 27,
+  "legion": 38,
+  "raider": 2
+ },
+ "played": {
+  "standard": 48,
+  "turtle": 48,
+  "legion": 48,
+  "raider": 48
+ },
+ "headToHead": {
+  "standard v turtle": {
+   "turtle": 8,
+   "standard": 8
+  },
+  "legion v standard": {
+   "legion": 10,
+   "standard": 6
+  },
+  "raider v standard": {
+   "standard": 15,
+   "raider": 1
+  },
+  "legion v turtle": {
+   "legion": 13,
+   "turtle": 3
+  },
+  "raider v turtle": {
+   "turtle": 16
+  },
+  "legion v raider": {
+   "legion": 15,
+   "raider": 1
+  }
+ },
+ "matches": [
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-1",
+   "minute": 6,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 14,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1711,
+     "workers": 18,
+     "military": 21,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-1",
+   "minute": 12,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2103,
+     "workers": 18,
+     "military": 20,
+     "buildings": 15
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 35,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-1",
+   "minute": 10,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 17,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2050,
+     "workers": 14,
+     "military": 26,
+     "buildings": 13
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-1",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2782,
+     "workers": 14,
+     "military": 26,
+     "buildings": 15
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 52,
+     "workers": 5,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-1",
+   "minute": 21,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 882,
+     "workers": 14,
+     "military": 8,
+     "buildings": 9
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 10,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-1",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 44,
+     "workers": 3,
+     "military": 3,
+     "buildings": 1
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2843,
+     "workers": 9,
+     "military": 31,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-1",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 52,
+     "workers": 2,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "bronze",
+     "power": 2371,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-1",
+   "minute": 6,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 14,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1711,
+     "workers": 18,
+     "military": 21,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-1",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2242,
+     "workers": 18,
+     "military": 20,
+     "buildings": 16
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 10,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-1",
+   "minute": 10,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 10,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2078,
+     "workers": 18,
+     "military": 22,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-1",
+   "minute": 37,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2052,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 36,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-1",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 11,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2050,
+     "workers": 14,
+     "military": 26,
+     "buildings": 13
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-2",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 5,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2093,
+     "workers": 18,
+     "military": 20,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-2",
+   "minute": 16,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 34,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2250,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-2",
+   "minute": 27,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 8,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2602,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-2",
+   "minute": 36,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 4,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 239,
+     "workers": 13,
+     "military": 21,
+     "buildings": 6
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-2",
+   "minute": 17,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 18,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 140,
+     "workers": 0,
+     "military": 20,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-2",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1949,
+     "workers": 14,
+     "military": 23,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-2",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1900,
+     "workers": 14,
+     "military": 22,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-2",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1363,
+     "workers": 14,
+     "military": 16,
+     "buildings": 11
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 45,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-2",
+   "minute": 8,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1641,
+     "workers": 18,
+     "military": 19,
+     "buildings": 14
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 4,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-2",
+   "minute": 10,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2125,
+     "workers": 18,
+     "military": 20,
+     "buildings": 17
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-2",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 5,
+     "workers": 1,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 204,
+     "workers": 2,
+     "military": 23,
+     "buildings": 8
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-2",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2059,
+     "workers": 14,
+     "military": 25,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-3",
+   "minute": 8,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1809,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-3",
+   "minute": 17,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 12,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2076,
+     "workers": 14,
+     "military": 26,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-3",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1471,
+     "workers": 14,
+     "military": 13,
+     "buildings": 13
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-3",
+   "minute": 11,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1647,
+     "workers": 14,
+     "military": 22,
+     "buildings": 12
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 35,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-3",
+   "minute": 25,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2046,
+     "workers": 11,
+     "military": 29,
+     "buildings": 12
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 14,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-3",
+   "minute": 11,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1992,
+     "workers": 14,
+     "military": 25,
+     "buildings": 13
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-3",
+   "minute": 23,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 9,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2124,
+     "workers": 14,
+     "military": 26,
+     "buildings": 15
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-3",
+   "minute": 27,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1955,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 36,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-3",
+   "minute": 14,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1819,
+     "workers": 18,
+     "military": 20,
+     "buildings": 14
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 36,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-3",
+   "minute": 26,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2048,
+     "workers": 8,
+     "military": 21,
+     "buildings": 17
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-3",
+   "minute": 16,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1916,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 7,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-3",
+   "minute": 21,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2344,
+     "workers": 11,
+     "military": 29,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-4",
+   "minute": 8,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1432,
+     "workers": 18,
+     "military": 14,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-4",
+   "minute": 8,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1655,
+     "workers": 18,
+     "military": 20,
+     "buildings": 14
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-4",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 12,
+     "workers": 2,
+     "military": 0,
+     "buildings": 1
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 142,
+     "workers": 14,
+     "military": 10,
+     "buildings": 1
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-4",
+   "minute": 14,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 129,
+     "workers": 3,
+     "military": 17,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-4",
+   "minute": 11,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1522,
+     "workers": 14,
+     "military": 19,
+     "buildings": 12
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-4",
+   "minute": 11,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1856,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-4",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 4,
+     "workers": 1,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2457,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-4",
+   "minute": 16,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 5,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1999,
+     "workers": 18,
+     "military": 21,
+     "buildings": 15
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-4",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1492,
+     "workers": 18,
+     "military": 16,
+     "buildings": 14
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-4",
+   "minute": 19,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2188,
+     "workers": 18,
+     "military": 22,
+     "buildings": 17
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-4",
+   "minute": 18,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2123,
+     "workers": 14,
+     "military": 26,
+     "buildings": 15
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-4",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 5,
+     "workers": 1,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2361,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-5",
+   "minute": 20,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 114,
+     "workers": 0,
+     "military": 15,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 44,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-5",
+   "minute": 27,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 11,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2249,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-5",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1899,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-5",
+   "minute": 17,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 14,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1881,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-5",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2470,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 24,
+     "workers": 7,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-5",
+   "minute": 10,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 4,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1832,
+     "workers": 14,
+     "military": 25,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-5",
+   "minute": 27,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 9,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2301,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-5",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2447,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 58,
+     "workers": 16,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-5",
+   "minute": 16,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 1952,
+     "workers": 18,
+     "military": 20,
+     "buildings": 14
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-5",
+   "minute": 21,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 5,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2150,
+     "workers": 18,
+     "military": 20,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-5",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2640,
+     "workers": 9,
+     "military": 31,
+     "buildings": 12
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 7,
+     "workers": 1,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-5",
+   "minute": 10,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 4,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1744,
+     "workers": 14,
+     "military": 23,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-6",
+   "minute": 19,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 19,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1669,
+     "workers": 18,
+     "military": 20,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-6",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 39,
+     "workers": 1,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "bronze",
+     "power": 2355,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-6",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2345,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 26,
+     "workers": 5,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-6",
+   "minute": 18,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2104,
+     "workers": 14,
+     "military": 26,
+     "buildings": 14
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-6",
+   "minute": 14,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 109,
+     "workers": 0,
+     "military": 16,
+     "buildings": 0
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-6",
+   "minute": 13,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2079,
+     "workers": 14,
+     "military": 26,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-6",
+   "minute": 17,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 10,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1927,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-6",
+   "minute": 16,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 117,
+     "workers": 3,
+     "military": 16,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-6",
+   "minute": 12,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1696,
+     "workers": 18,
+     "military": 20,
+     "buildings": 14
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-6",
+   "minute": 14,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1733,
+     "workers": 18,
+     "military": 20,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-6",
+   "minute": 18,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1878,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-6",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 7,
+     "workers": 2,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2487,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-7",
+   "minute": 24,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2569,
+     "workers": 18,
+     "military": 22,
+     "buildings": 17
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-7",
+   "minute": 8,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1877,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-7",
+   "minute": 45,
+   "ended": false,
+   "eliminated": [],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "stone",
+     "power": 17,
+     "workers": 4,
+     "military": 0,
+     "buildings": 1
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 122,
+     "workers": 12,
+     "military": 3,
+     "buildings": 8
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-7",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1699,
+     "workers": 14,
+     "military": 23,
+     "buildings": 12
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "stone",
+     "power": 7,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-7",
+   "minute": 28,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2316,
+     "workers": 11,
+     "military": 29,
+     "buildings": 16
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 37,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-7",
+   "minute": 14,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 4,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1642,
+     "workers": 14,
+     "military": 16,
+     "buildings": 14
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-7",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1868,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-7",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 5,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2223,
+     "workers": 18,
+     "military": 19,
+     "buildings": 18
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-7",
+   "minute": 17,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1492,
+     "workers": 18,
+     "military": 16,
+     "buildings": 14
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 6,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-7",
+   "minute": 13,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2240,
+     "workers": 17,
+     "military": 21,
+     "buildings": 18
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-7",
+   "minute": 10,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "stone",
+     "power": 1830,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-7",
+   "minute": 9,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1281,
+     "workers": 14,
+     "military": 13,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "turtle",
+   "seed": "anchor-8",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2155,
+     "workers": 14,
+     "military": 26,
+     "buildings": 15
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 36,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "standard",
+   "seed": "anchor-8",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "standard"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 256,
+     "workers": 16,
+     "military": 18,
+     "buildings": 10
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 38,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "legion",
+   "seed": "anchor-8",
+   "minute": 22,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2480,
+     "workers": 14,
+     "military": 26,
+     "buildings": 15
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 9,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "standard",
+   "seed": "anchor-8",
+   "minute": 23,
+   "ended": true,
+   "eliminated": [
+    "legion"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 37,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1819,
+     "workers": 14,
+     "military": 19,
+     "buildings": 15
+    }
+   ]
+  },
+  {
+   "a": "standard",
+   "b": "raider",
+   "seed": "anchor-8",
+   "minute": 25,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "standard",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2518,
+     "workers": 14,
+     "military": 26,
+     "buildings": 13
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 12,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "standard",
+   "seed": "anchor-8",
+   "minute": 8,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 4,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "standard",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 1908,
+     "workers": 14,
+     "military": 23,
+     "buildings": 13
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "legion",
+   "seed": "anchor-8",
+   "minute": 14,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 35,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "stone",
+     "power": 1850,
+     "workers": 14,
+     "military": 26,
+     "buildings": 12
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "turtle",
+   "seed": "anchor-8",
+   "minute": 21,
+   "ended": true,
+   "eliminated": [
+    "turtle"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2388,
+     "workers": 14,
+     "military": 26,
+     "buildings": 16
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 35,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "turtle",
+   "b": "raider",
+   "seed": "anchor-8",
+   "minute": 17,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "turtle",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2164,
+     "workers": 18,
+     "military": 21,
+     "buildings": 17
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 2,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "turtle",
+   "seed": "anchor-8",
+   "minute": 18,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 44,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "turtle",
+     "civ": "persian",
+     "age": "neolithic",
+     "power": 2133,
+     "workers": 18,
+     "military": 20,
+     "buildings": 17
+    }
+   ]
+  },
+  {
+   "a": "legion",
+   "b": "raider",
+   "seed": "anchor-8",
+   "minute": 15,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "legion",
+     "civ": "greek",
+     "age": "neolithic",
+     "power": 2262,
+     "workers": 12,
+     "military": 28,
+     "buildings": 15
+    },
+    {
+     "profile": "raider",
+     "civ": "persian",
+     "age": "stone",
+     "power": 3,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    }
+   ]
+  },
+  {
+   "a": "raider",
+   "b": "legion",
+   "seed": "anchor-8",
+   "minute": 43,
+   "ended": true,
+   "eliminated": [
+    "raider"
+   ],
+   "seats": [
+    {
+     "profile": "raider",
+     "civ": "greek",
+     "age": "stone",
+     "power": 10,
+     "workers": 0,
+     "military": 0,
+     "buildings": 0
+    },
+    {
+     "profile": "legion",
+     "civ": "persian",
+     "age": "bronze",
+     "power": 2536,
+     "workers": 14,
+     "military": 26,
+     "buildings": 17
+    }
+   ]
+  }
+ ]
+}
