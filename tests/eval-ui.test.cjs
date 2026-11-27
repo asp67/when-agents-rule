@@ -303,7 +303,7 @@ test('the race chart is an overlay of either mode: its switch works in broadcast
     assert.doesNotMatch(css, /body\.broadcast-mode\s+(#raceChart|\.bench-panel)\s*\{\s*display:\s*none/);
     // Nor does a small window: the chart gets narrower there and stays on screen.
     assert.doesNotMatch(css, /\.race-chart\s*\{[^}]*display:\s*none/);
-    assert.match(css, /@media \(max-width: 1100px\) \{ \.race-chart \{ width: min\(300px, calc\(100vw - /);
+    assert.match(css, /@media \(max-width: 1100px\) \{ \.race-chart \{ width: min\(300px, calc\(100vw \/ var\(--ui-scale, 1\) - /);   // the window in the card's own, scaled units (b1306)
     assert.doesNotMatch(css, /body\.bench-view[^{]*#(aiDecisionLog|spectatorLeaderboard)[^{]*\{\s*display:\s*none/);
     assert.doesNotMatch(css, /\.bench-left\b/);
     assert.match(css, /\.bench-right \{ right: 328px;/);                 // beside the leaderboard

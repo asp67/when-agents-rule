@@ -2495,7 +2495,12 @@ body.spectator-mode #unitInfo.spectator-card {
 .race-chart {
     position: absolute; z-index: 1000;
     right: calc(var(--mm-edge) + var(--mm-canvas) + var(--mm-gut) + 44px); bottom: var(--mm-bottom);
-    width: min(360px, 30vw); padding: 7px 10px 6px;
+    /* The card scales with the UI size as the minimap beside it does (it did not, b1306:
+       at a smaller size it stood full size a gap away from a shrunken minimap). Under zoom
+       its offsets and its type shrink with it; a share of the window does too, so that is
+       divided back out, as for every limit taken from the window. */
+    zoom: var(--ui-scale, 1);
+    width: min(360px, calc(30vw / var(--ui-scale, 1))); padding: 7px 10px 6px;
     background: rgba(25, 30, 25, 0.95); border: 1px solid rgba(221, 211, 180, 0.16); border-radius: 4px;
 }
 .race-chart .chart-head { margin-bottom: 3px; gap: 6px; }
@@ -2516,7 +2521,7 @@ body.spectator-mode #unitInfo.spectator-card {
 .race-key { margin: 3px 0 0; font-size: 0.62em; line-height: 1.35; color: #8d97a8; }
 /* The race chart is an overlay of both modes. In broadcast mode the caption (bottom left)
    keeps clear of it. */
-body.broadcast-mode.race-view .chronicle-caption { max-width: min(900px, calc(100vw / var(--ui-scale, 1) - 64px - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - min(360px, 30vw) - 16px)); }
+body.broadcast-mode.race-view .chronicle-caption { max-width: min(900px, calc(100vw / var(--ui-scale, 1) - 64px - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - min(360px, 30vw / var(--ui-scale, 1)) - 16px)); }
 
 /* The comparison lower third of broadcast mode (overhaul step D7): in the caption's place,
    and never at the same time as a caption (updateCompare). The seats stand side by side so
@@ -2528,7 +2533,7 @@ body.broadcast-mode.race-view .chronicle-caption { max-width: min(900px, calc(10
     backdrop-filter: blur(3px); opacity: 0; transition: opacity 0.5s ease;
 }
 .broadcast-compare.is-in { opacity: 1; }
-body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(100vw / var(--ui-scale, 1) - 64px - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - min(360px, 30vw) - 16px)); }
+body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(100vw / var(--ui-scale, 1) - 64px - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - min(360px, 30vw / var(--ui-scale, 1)) - 16px)); }
 .bcmp-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
 .bcmp-head b { font-size: 1.05em; color: #ddd3b4; letter-spacing: 0.02em; }
 .bcmp-head span { font-size: 0.86em; color: #b8c6d6; }
@@ -2720,7 +2725,7 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 .be-when { display: inline-block; min-width: 5.6em; color: #8d97a8; font-variant-numeric: tabular-nums; }
 @media (max-width: 1100px) { .bench-right { width: 300px; } }
 /* Never wider than the room between the left edge and the minimap. */
-@media (max-width: 1100px) { .race-chart { width: min(300px, calc(100vw - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - 16px)); } }
+@media (max-width: 1100px) { .race-chart { width: min(300px, calc(100vw / var(--ui-scale, 1) - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - 16px)); } }
 
 /* Round-answer-time field: indented under the turn-based checkbox it belongs to,
    and dimmed when that checkbox is off so it cannot look like a live setting. */
