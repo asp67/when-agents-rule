@@ -43,7 +43,9 @@ function coreHash() {
 // The results screen's power score, lifted out of ui.js rather than copied.
 function powerScore() {
     const src = fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8');
-    const m = src.match(/\n    spectatorPowerScore\(ai\) \{\n([\s\S]*?)\n    \}\n/);
+    // Either line ending: a Windows checkout has js/ui.js with CRLF, and the pattern with
+    // a bare newline found nothing there, so no match could be played at all.
+    const m = src.match(/\r?\n    spectatorPowerScore\(ai\) \{\r?\n([\s\S]*?)\r?\n    \}\r?\n/);
     if (!m) throw new Error('spectatorPowerScore not found in js/ui.js');
     return new Function('ai', m[1]);
 }
@@ -52,7 +54,9 @@ function powerScore() {
 async function playOne({ a, b, seed, minutes, civs }) {
     const { GoldenMatch } = require(path.join(ROOT, 'tests/sim/harness.cjs'));
     const power = powerScore();
-    const m = new GoldenMatch({ seed: 7, hidden: true });
+    // At the arena's pace (2 since build 1020), as tools/eval/anchors.cjs plays: rules that
+    // read the pace (a stone's flight, the Wonder's countdown) play at the realm's 1 otherwise.
+    const m = new GoldenMatch({ seed: 7, hidden: true, normalSpeed: 2 });
     await m.startArena({ seats: [{ civ: civs[0], type: 'ki', profile: a }, { civ: civs[1], type: 'ki', profile: b }], seed });
     const g = m.game, seats = g.aiManager.aiPlayers;
     // Minute by minute until the game ends itself (an elimination or a Wonder; the
