@@ -81,6 +81,39 @@ class IntentLayer {
             return y;
         });
     }
+    // Where a bubble goes that would stand on a panel (b1307). `bx` is the bubble: `x` its
+    // centre, `w` and `h` its size; `y` is the point it stands on, its bottom `lift` above
+    // that. `panels` are rectangles in the same coordinates; `view` gives the width `vw`,
+    // the edge gap `pad`, the `lift` and the highest a bubble's top may go, `top`.
+    //
+    // Off a panel a bubble is moved out beside it, toward the middle of the view, as it
+    // always was. But that place may be another panel's: the chart stands between the
+    // minimap and whatever is left of it, and on a narrow window the room beside a panel
+    // is often narrower than a bubble. The old way moved it back and forth between the
+    // two and left it on whichever was asked last. Now each place is tried in turn --
+    // beside the panel toward the middle, beside it on the other side, above it -- and the
+    // first that is inside the view and on no panel at all is taken. Where none is, the
+    // bubble goes above (up always leads off the panels along the bottom) and is asked
+    // again from there, a few times at most.
+    static clear(bx, y, panels, view) {
+        const vw = view.vw, pad = view.pad == null ? 6 : view.pad, lift = view.lift == null ? 18 : view.lift, minTop = view.top == null ? -Infinity : view.top;
+        const hit = (x, at) => panels.find(q => at - lift - bx.h < q.bottom && at - lift > q.top && x - bx.w / 2 < q.right && x + bx.w / 2 > q.left);
+        const inside = (x, at) => at - lift - bx.h >= minTop - 0.5
+            && (!(vw > bx.w + 2 * pad) || (x - bx.w / 2 >= pad - 0.5 && x + bx.w / 2 <= vw - pad + 0.5));
+        let x = bx.x, at = y;
+        for (let round = 0; round < 4; round++) {
+            const q = hit(x, at);
+            if (!q) break;
+            const toRight = q.right + pad + bx.w / 2, toLeft = q.left - pad - bx.w / 2, towardMiddle = (q.left + q.right) / 2 < vw / 2;
+            const beside = towardMiddle ? [toRight, toLeft] : [toLeft, toRight];
+            const places = [{ x: beside[0], y: at }, { x: beside[1], y: at }, { x, y: q.top - pad + lift }];
+            const free = places.find(c => inside(c.x, c.y) && !hit(c.x, c.y));
+            if (free) { x = free.x; at = free.y; break; }
+            const next = inside(places[2].x, places[2].y) ? places[2] : places[0];
+            x = next.x; at = next.y;
+        }
+        return { x, y: at };
+    }
     static get GRID() { return 7; }   // the 800 map's; a match's own is game.EXPLORE_TILES (b1057)
 
     // The seat's colour, as its badge shows it. Seat 0 wears charcoal, which vanishes on

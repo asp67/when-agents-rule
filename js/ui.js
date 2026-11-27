@@ -3227,9 +3227,14 @@ class UIManager {
         // it, toward the middle of the view; before stacking, and again after, since
         // stacking can raise a bubble into one.
         const ov = box.getBoundingClientRect();
-        const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo', 'benchMatrix', 'raceChart', 'compareStrip']
+        // Shown: drawn with a width, and either in the flow of a shown parent or fixed to
+        // the window. A fixed element has no offsetParent, shown or not, so asking for one
+        // alone dropped the unit card and the comparison strip from this list (b1307),
+        // which is the mistake the top bar's own check below already knew of. The second
+        // camera's picture was not on the list at all.
+        const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo', 'benchMatrix', 'raceChart', 'compareStrip', 'secondCam']
             .map(id => document.getElementById(id))
-            .filter(el => el && el.offsetParent !== null && el.offsetWidth > 0)
+            .filter(el => el && el.offsetWidth > 0 && (el.offsetParent !== null || getComputedStyle(el).position === 'fixed'))
             .map(el => { const q = el.getBoundingClientRect();
                 return { left: q.left - ov.left, right: q.right - ov.left, top: q.top - ov.top, bottom: q.bottom - ov.top }; });
         // The plans: slot 0 on the left edge, slot 1 on the right, under the top bar -- or
@@ -3260,17 +3265,17 @@ class UIManager {
                 const y = vh > h + TOP + pad + LIFT ? Math.max(TOP + LIFT + h, Math.min(vh - pad + LIFT, ay)) : ay;
                 return { x, y, w, h };
             });
+            // Off the panels: beside one, or above it where neither side is free
+            // (IntentLayer.clear). It gives the point back too, since "above" moves it.
+            const view = { vw, pad, lift: LIFT, top: TOP };
             const avoid = (bx, y) => {
-                const top = y - LIFT - bx.h, bottom = y - LIFT;
-                for (let pass = 0; pass < 2; pass++) for (const q of panels) {
-                    if (!(top < q.bottom && bottom > q.top && bx.x - bx.w / 2 < q.right && bx.x + bx.w / 2 > q.left)) continue;
-                    bx.x = (q.left + q.right) / 2 < vw / 2 ? q.right + pad + bx.w / 2 : q.left - pad - bx.w / 2;
-                }
-                if (vw > bx.w + 2 * pad) bx.x = Math.max(pad + bx.w / 2, Math.min(vw - pad - bx.w / 2, bx.x));
+                const c = IntentLayer.clear(bx, y, panels, view);
+                bx.x = vw > bx.w + 2 * pad ? Math.max(pad + bx.w / 2, Math.min(vw - pad - bx.w / 2, c.x)) : c.x;
+                return c.y;
             };
-            boxes.forEach(bx => avoid(bx, bx.y));
+            boxes.forEach(bx => { bx.y = avoid(bx, bx.y); });
             const ys = IntentLayer.stack(boxes, 4, TOP + LIFT);
-            boxes.forEach((bx, k) => avoid(bx, ys[k]));
+            boxes.forEach((bx, k) => { ys[k] = avoid(bx, ys[k]); });
             boxes.forEach((bx, k) => { els[k].style.left = Math.round(bx.x) + 'px'; els[k].style.top = Math.round(ys[k]) + 'px'; });
         }
     }

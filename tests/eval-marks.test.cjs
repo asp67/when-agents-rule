@@ -148,7 +148,7 @@ test('the marks are part of the story layer: the Intent switch hides them, and t
     assert.match(src, /const ledger = !document\.hidden && this\.intentOn\(\) \? this\.evalLedger\(\) : null;\s+if \(ledger\) this\.evalMarks\.poll\(ledger\.profile\(\)\);/);
     assert.match(src, /if \(this\.evalMarks && this\.intentOn\(\)\) this\.evalMarks\.battle\(e\);/);
     // Bubbles keep off the Bench panels, the race chart and the comparison strip as they keep off the other panels.
-    assert.match(src, /'unitInfo', 'benchMatrix', 'raceChart', 'compareStrip'\]/);
+    assert.match(src, /'unitInfo', 'benchMatrix', 'raceChart', 'compareStrip', 'secondCam'\]/);   // the second camera since b1307
     assert.ok(html.includes('src="js/eval/marks.js?'), 'the marks file is loaded by the page');
     const context = vm.createContext({ window: {}, navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} },
         document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} } });
