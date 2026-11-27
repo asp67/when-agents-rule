@@ -2009,6 +2009,20 @@ class UIManager {
         if (!m.auth.headers[idx]) m.auth.headers[idx] = { name: '', value: '' };
         m.auth.headers[idx][field] = value; this.saveArenaConfig();
     }
+    // What an answer from the login popup means for the login that is waiting (b1303):
+    // null if it is not for it (no answer at all, or one that carries another login's
+    // state), else the answer. A code must come with this login's state: a server that
+    // follows OAuth sends back the state it was given, and an answer without it is refused
+    // by name instead of taken. It was taken, the check reading "no state, or the right one".
+    // OpenRouter is left as it was: its login is its own flow, whether it returns the
+    // state is not something this could be tried against, and the code it hands back is
+    // bound to this login by PKCE either way (as every server's is).
+    static oauthAnswer(d, pkce, openRouter) {
+        if (!d || d.type !== 'war-oauth') return null;
+        if (d.state && d.state !== pkce.state) return null;
+        if (d.code && !d.state && !openRouter) return { error: 'noState' };
+        return d;
+    }
     // The login popup (b1024): opened on the click itself, sent to the login page once
     // the PKCE pair is made, and answered by oauth-callback.html with the code.
     async oauthLogin(id) {
@@ -2032,7 +2046,10 @@ class UIManager {
             let bc = null, timer = null;
             const onMsg = ev => { if (ev.origin === location.origin) take(ev.data); };
             const done = r => { clearTimeout(timer); window.removeEventListener('message', onMsg); try { if (bc) bc.close(); } catch (e) {} resolve(r); };
-            const take = d => { if (d && d.type === 'war-oauth' && (!d.state || d.state === pkce.state)) done(d); };
+            const take = d => {
+                const r = UIManager.oauthAnswer(d, pkce, openRouter);
+                if (r) done(r.error === 'noState' ? { error: t('ar.oauthNoState') } : r);
+            };
             window.addEventListener('message', onMsg);
             try { bc = new BroadcastChannel('war-oauth'); bc.onmessage = ev => take(ev.data); } catch (e) {}
             timer = setTimeout(() => done({ error: t('ar.oauthTimeout') }), 300000);

@@ -74,3 +74,71 @@ test('another OAuth server: authorize with PKCE, trade the code without a secret
     assert.equal(h2['x-api-key'], 'at-2');
     assert.equal(auth.refreshToken, 'rt-1', 'kept when the server sends no new one');
 });
+
+// ---- the answer the login popup sends back (b1303) -------------------------------------
+// A code is taken only with the state this login sent. It was also taken with none.
+function page() {
+    const listeners = [];
+    const channel = { onmessage: null, close() {} };
+    const exchanged = [];
+    const scope = vm.createContext({ console, t: (k, v) => k + (v ? JSON.stringify(v) : ''), setTimeout: () => 1, clearTimeout() {},
+        location: { origin: 'http://localhost:8099', search: '' }, document: { getElementById: () => null },
+        BroadcastChannel: function () { return channel; },
+        OpenAIAIManager: { isOpenRouter: e => /openrouter\.ai/.test(e), oauthPkce: async () => ({ verifier: 'v', challenge: 'c', state: 'state-of-this-login' }),
+            oauthAuthorizeUrl: () => 'https://login.example.com/authorize', oauthExchange: async (a, e, code) => { exchanged.push(code); return { accessToken: 'at' }; } } });
+    scope.window = { open: () => ({ location: {}, close() {} }), addEventListener: (k, f) => listeners.push(f), removeEventListener() {} };
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8') + '\nthis.UI = UIManager;', scope);
+    const model = endpoint => ({ endpoint, auth: { type: 'oauth', authorizeUrl: 'https://login.example.com/authorize', tokenUrl: 'https://login.example.com/token', clientId: 'war-app' } });
+    const login = endpoint => {
+        const u = Object.create(scope.UI.prototype), m = model(endpoint);
+        Object.assign(u, { getArenaModel: () => m, renderArenaLibrary() {}, saveArenaConfig() {} });
+        const done = u.oauthLogin('m1');
+        // The popup's answer, as oauth-callback.html posts it on the channel.
+        const answer = async d => { for (let i = 0; i < 5 && !channel.onmessage; i++) await new Promise(r => setImmediate(r)); channel.onmessage({ data: d }); };
+        return { m, done, answer };
+    };
+    return { scope, login, exchanged };
+}
+
+test('the popup\'s answer: for this login only with its state, and never a code without one', () => {
+    const { scope } = page(), A = (d, openRouter = false) => scope.UI.oauthAnswer(d, { state: 'S' }, openRouter);
+    assert.equal(A(null), null);
+    assert.equal(A({ type: 'something-else', code: 'c', state: 'S' }), null, 'not an answer of ours');
+    assert.equal(A({ type: 'war-oauth', code: 'c', state: 'OTHER' }), null, 'another login\'s answer is left for that login');
+    assert.equal(A({ type: 'war-oauth', code: 'c', state: 'S' }).code, 'c', 'the right state');
+    assert.equal(A({ type: 'war-oauth', code: 'c', state: null }).error, 'noState', 'a code without a state is refused');
+    assert.equal(A({ type: 'war-oauth', code: 'c' }).error, 'noState');
+    assert.equal(A({ type: 'war-oauth', code: null, state: null, error: 'access_denied' }).error, 'access_denied', 'a refusal by the server ends the wait as before');
+    // OpenRouter's own flow is as it was: bound by PKCE, state not required of it.
+    assert.equal(A({ type: 'war-oauth', code: 'c', state: null }, true).code, 'c');
+    assert.equal(A({ type: 'war-oauth', code: 'c', state: 'OTHER' }, true), null);
+});
+
+test('a login waits past another login\'s answer, refuses a code without a state, and trades one that has it', async () => {
+    // The right state: the code is traded.
+    let p = page(), l = p.login('https://llm.example.com/v1');
+    await l.answer({ type: 'war-oauth', code: 'stale', state: 'another-login' });   // ignored
+    await l.answer({ type: 'war-oauth', code: 'good', state: 'state-of-this-login' });
+    await l.done;
+    assert.deepEqual(p.exchanged, ['good']);
+    assert.equal(l.m._status, null, 'logged in');
+    // No state: nothing is traded, and the card says why.
+    p = page(); l = p.login('https://llm.example.com/v1');
+    await l.answer({ type: 'war-oauth', code: 'injected', state: null });
+    await l.done;
+    assert.deepEqual(p.exchanged, [], 'the code is not traded');
+    assert.equal(l.m._status.cls, 'err');
+    assert.match(l.m._status.text, /ar\.oauthNoState/);
+    // OpenRouter, as before.
+    p = page(); l = p.login('https://openrouter.ai/api/v1');
+    await l.answer({ type: 'war-oauth', code: 'or-code', state: null });
+    await l.done;
+    assert.deepEqual(p.exchanged, ['or-code']);
+});
+
+test('the refusal has its words in every language', () => {
+    const ctx = vm.createContext({ console, localStorage: { getItem: () => null, setItem() {} }, navigator: { language: 'en' }, window: {},
+        document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} } });
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8') + '\nthis.I = I18N;', ctx);
+    for (const lang of ['en', 'de', 'es', 'zh']) assert.ok(ctx.I[lang]['ar.oauthNoState'] && ctx.I[lang]['ar.oauthNoState'].length > 10, lang);
+});
