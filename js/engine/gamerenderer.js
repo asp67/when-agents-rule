@@ -578,8 +578,10 @@
                 proj: m3.perspective(FOVY, aspect, Math.max(2, dist * 0.05), FAR),
                 // Haze tied to the far plane, so geometry is fully faded BEFORE it is
                 // clipped at EVERY zoom — otherwise the cut moves with dist and the
-                // horizon slides. The map is 800 across and the eye sits ~dist away,
-                // so land never reaches the start of it; only the open sea does.
+                // horizon slides. On the 800 map the eye sits ~dist away and land never
+                // reaches the start of it; only the open sea does. On the 1200 map the
+                // far corner does, seen from the opposite one at a low angle, and fades
+                // a little: still short of the far plane (looked at on build 1295).
                 haze: [FAR * 0.55, FAR * 0.97]
             };
             return this._cam;
@@ -872,7 +874,9 @@
             }
             const rng = TexGen.rng(pSeed);
             const props = [];
-            const HALF = 340; // keep off the beach ring
+            // Off the beach ring, on a map of any size, and as dense on each: the reach was
+            // that of the 800 map (340), so a 1200 map was sown in its middle only.
+            const { half: HALF, many } = EngineRenderer.scatterReach();
             const TRSp = (x, y, z, sx, sy, sz, ry) => {
                 let m = m3.translation(x, y, z);
                 if (ry) m = m3.multiply(m, m3.rotationY(ry));
@@ -896,21 +900,21 @@
                 prop('sphere', [1, 6, 4], texture, tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
             };
             if (theme === 'winter') {
-                for (let i = 0; i < 220; i++) bush(true);
-                for (let i = 0; i < 150; i++) pebble(Array(3).fill(.40+.10*i/149),'white');
+                for (let i = 0, n = many(220); i < n; i++) bush(true);
+                for (let i = 0, n = many(150); i < n; i++) pebble(Array(3).fill(.40+.10*i/(n-1)),'white');
             } else if (theme === 'desert') {
-                for (let i = 0; i < 180; i++) bush(false);
-                for (let i = 0; i < 150; i++) pebble(EngineRenderer.DESERT_STONE[0]); // rust rocks
-                for (let i = 0; i < 90; i++) pebble(EngineRenderer.DESERT_STONE[1]);
+                for (let i = 0, n = many(180); i < n; i++) bush(false);
+                for (let i = 0, n = many(150); i < n; i++) pebble(EngineRenderer.DESERT_STONE[0]); // rust rocks
+                for (let i = 0, n = many(90); i < n; i++) pebble(EngineRenderer.DESERT_STONE[1]);
             } else {
-                for (let i = 0; i < 260; i++) bush(false);
+                for (let i = 0, n = many(260); i < n; i++) bush(false);
                 const petals = [[0.85, 0.84, 0.70], [0.78, 0.68, 0.40], [0.64, 0.57, 0.62]];
-                for (let i = 0; i < 100; i++) { // sparse, muted flower tufts
+                for (let i = 0, n = many(100); i < n; i++) { // sparse, muted flower tufts
                     const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                     const s = 0.11 + rng() * 0.08;
                     prop('sphere', [1, 5, 4], 'white', petals[(rng() * 3) | 0], x, 0.16, z, s, s, s);
                 }
-                for (let i = 0; i < 150; i++) pebble(Array(3).fill(.40+.10*i/149),'white');
+                for (let i = 0, n = many(150); i < n; i++) pebble(Array(3).fill(.40+.10*i/(n-1)),'white');
             }
             // What grows and lies on the ground besides (overhaul step A6), and the reeds at
             // the water. Sown apart from the scatter above, which is as it was.
@@ -947,7 +951,7 @@
             const S = EngineRenderer.SCATTER[theme] || EngineRenderer.SCATTER.summer, m3 = M(), WHITE = this.WHITE;
             const rng = TexGen.rng((Math.imul(seed | 0, 2654435761) ^ 0x5bd1e995) >>> 0);
             const cover = TexGen.grassCoverSampler(theme, TexGen.TERRAIN_SEED, TexGen.TERRAIN_WORLD);
-            const HALF = 340, out = [];                       // keep off the beach ring, like the scatter
+            const { half: HALF, many } = EngineRenderer.scatterReach(), out = [];   // off the beach ring, like the scatter
             const TR = (x, y, z, sx, sy, sz, ry, rz) => {
                 let m = m3.translation(x, y, z);
                 if (ry) m = m3.multiply(m, m3.rotationY(ry));
@@ -970,7 +974,7 @@
             const PETALS = theme === 'desert' ? [[0.92, 0.80, 0.30], [0.86, 0.52, 0.56]]
                 : [[0.80, 0.22, 0.17], [0.93, 0.80, 0.26], [0.94, 0.92, 0.84], [0.58, 0.44, 0.74], [0.40, 0.50, 0.82]];
             const STEM = [0.36, 0.50, 0.22];
-            for (let i = 0; i < S.flowers; i++) {
+            for (let i = 0, n = many(S.flowers); i < n; i++) {
                 const at = where((x, z) => cover(x, z) > 0.65 && EngineRenderer.standField(x + 900, z - 400) > 0.52);
                 if (!at) continue;
                 const lead = PETALS[(rng() * PETALS.length) | 0], second = PETALS[(rng() * PETALS.length) | 0];
@@ -988,7 +992,7 @@
 
             // Beds of pebbles, on dry ground. In the desert they are the land's rust and sand
             // (the stone texture, as its single pebbles are); elsewhere greys.
-            for (let i = 0; i < S.beds; i++) {
+            for (let i = 0, n = many(S.beds); i < n; i++) {
                 const at = where((x, z) => cover(x, z) < 0.35);
                 if (!at) continue;
                 const count = 5 + ((rng() * 5) | 0), parts = [];
@@ -1003,7 +1007,7 @@
 
             // Dry tufts: three pale blades leaning apart, three to five tufts together.
             const DRY = theme === 'winter' ? [0.62, 0.56, 0.42] : [0.74, 0.64, 0.40];
-            for (let i = 0; i < S.tufts; i++) {
+            for (let i = 0, n = many(S.tufts); i < n; i++) {
                 const at = where((x, z) => theme === 'winter' ? cover(x, z) > 0.4 : cover(x, z) < 0.55);
                 if (!at) continue;
                 const parts = [], tufts = 3 + ((rng() * 3) | 0);
@@ -1017,7 +1021,7 @@
             // Fallen logs, beside the woods: near a tree, clear of every site.
             const sites = terrain.resources || [], trees = sites.filter(o => o.type === 'wood' && !(o.amount <= 0));
             const pale = theme === 'desert' ? [0.94, 0.90, 0.80] : WHITE;
-            for (let i = 0; i < S.logs && trees.length; i++) {
+            for (let i = 0, n = many(S.logs); i < n && trees.length; i++) {
                 let at = null;
                 for (let t = 0; t < 12 && !at; t++) {
                     const tree = trees[(rng() * trees.length) | 0], a = rng() * 6.283, d = 2.6 + rng() * 3.2;
@@ -4291,6 +4295,14 @@
     // A flower against the size it was first given (build 1204): its height over the ground and
     // the size of its head. The stems keep their thickness.
     EngineRenderer.FLOWERS = { height: 0.5, head: 0.5 };
+    // How far from the middle the ground scatter is sown, and how many of each thing for
+    // a count given for the 800 map: 60 inside the map's edge (340 there), and as many
+    // per area on any size. On the 800 map every count is its own, so its scatter is as
+    // it was.
+    EngineRenderer.scatterReach = (mapSize = TexGen.MAP_SIZE) => {
+        const half = (mapSize > 0 ? mapSize : 800) / 2 - 60, k = (half / 340) * (half / 340);
+        return { half, many: n => Math.round(n * k) };
+    };
     EngineRenderer.CONTACT_TILES_PER_FRAME = 24;
     EngineRenderer.RESOLUTION_CAP = { low: 1, balanced: 1.5, cinematic: 2 };
     window.EngineRenderer = EngineRenderer;
