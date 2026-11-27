@@ -197,7 +197,10 @@ const CIVILIZATIONS = {
                 researchAt: 'academy',
                 requiredAge: 'neolithic',
                 requires: ['academy'],
-                description: 'Steinabbau +25% effizienter',
+                // Every resource, as Agriculture: a worker's load of anything grows by a
+                // quarter. It said "stone mining" until build 1301; the effect is what the
+                // surcharge above was set against, so the text was made to fit it.
+                description: 'Dorfbewohner ernten +25% mehr',
                 researchTime: 20000,  // 20 seconds
                 bonus: { harvestRate: 0.25 },
                 appliesTo: 'worker'
@@ -464,10 +467,12 @@ const CIVILIZATIONS = {
                 researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: ['philosophy'],
-                description: 'Dorfzentrum -50% Ausbildzeit',
+                // Every building of the seat trains 1.5 times as fast: a third less time.
+                // It said "Town Center -50% training time" until build 1301.
+                description: 'Alle Gebäude +50% Ausbildungstempo',
                 researchTime: 25000,
                 bonus: { trainSpeed: 0.5 },
-                appliesTo: 'town_center'
+                appliesTo: 'all_buildings'
             },
             phalanx_armor: {
                 name: 'Phalanx-Rüstung',
@@ -1564,10 +1569,10 @@ const CIVILIZATIONS = {
                 researchAt: 'academy',
                 requiredAge: 'neolithic',
                 requires: ['academy'],
-                description: 'Dorfzentrum +25% Ausbildungstempo',
+                description: 'Alle Gebäude +25% Ausbildungstempo',   // every building, not the Town Center alone (b1301)
                 researchTime: 20000,
                 bonus: { trainSpeed: 0.25 },
-                appliesTo: 'town_center'
+                appliesTo: 'all_buildings'
             },
             cotton_armor: {
                 name: 'Baumwollrüstung',
