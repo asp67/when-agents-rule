@@ -122,6 +122,8 @@ class SeatView {
     // this the view drew the forests and mines the rivals had found as well (build 1309).
     // Asked of the seat's own memory by node index, the list its state is built from; a
     // seat that keeps none is answered by the ground it has explored, as the minimap does.
+    // While the view is on the renderer takes this answer alone (build 1310), so a node the
+    // seat knows is drawn even on a square its fog never opened.
     nodeHidden(res, idx) {
         const ai = this.ai();
         if (!ai || !res) return false;

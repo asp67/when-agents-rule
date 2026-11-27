@@ -136,8 +136,10 @@ test('it shows the resource nodes this seat has found, not the ones another seat
     // Everything again: the hook is taken away.
     v.set(null);
     assert.equal(game.renderer.nodeHidden, null);
-    // And the renderer asks it for every node it is about to show.
-    assert.match(read('js/engine/gamerenderer.js'), /&& !\(this\.nodeHidden && this\.nodeHidden\(res, mb\.i\)\)/);
+    // The renderer asks it for every node, and while the view is on nothing else decides: a node
+    // the seat found just inside the rim of a sight circle is drawn although the fog's square
+    // under it stayed dark (the seat measures exactly, the fog in whole squares; build 1310).
+    assert.match(read('js/engine/gamerenderer.js'), /const vis = this\.nodeHidden \? there && !this\.nodeHidden\(res, mb\.i\)\r?\n\s+: there && !!\(res\.mesh\.trunk \? res\.mesh\.trunk\.visible : res\.mesh\.visible\);/);
 });
 
 // The switch, on the page class with a stand-in for the view.

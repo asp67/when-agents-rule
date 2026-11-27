@@ -1500,10 +1500,14 @@
                 let want = 0;
                 for (const mb of c.members) {
                     const res = rs[mb.i];
-                    // The node's own flag is the spectator's fog; the model's view (js/seat-view.js)
-                    // also leaves out what its seat has not found.
-                    const vis = !!(res.mesh && res.amount > 0 && (res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible))
-                        && !(this.nodeHidden && this.nodeHidden(res, mb.i));
+                    // The node's own flag is the spectator's fog. In the model's view (js/seat-view.js)
+                    // the seat's memory decides alone: what it has not found is left out, and what
+                    // it has found is drawn even where the fog's square stayed dark. The seat's
+                    // sight is measured exactly and the fog in whole squares, so a node just
+                    // inside the rim of a sight circle is known on ground the fog never opened.
+                    const there = !!(res.mesh && res.amount > 0);
+                    const vis = this.nodeHidden ? there && !this.nodeHidden(res, mb.i)
+                        : there && !!(res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible);
                     mb.want = vis;
                     mb.wantScale = vis ? this._resourceScale(res) : 1;
                     if (vis) want++;
