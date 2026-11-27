@@ -3654,17 +3654,24 @@
             // G4c: Context-sensitive hairline range perimeter ONLY for an inspected Tower or Trebuchet
             // (never stacked across box-selected archer/infantry armies, never thick glowing bands).
             if (!inset) {
-                const sb = this.selectedBuilding;
-                const oneUnit = (this.selectedUnits && this.selectedUnits.length === 1) ? this.selectedUnits[0] : null;
+                // The selection is the game's: the building it holds, and the one unit picked by
+                // a player (selectedUnits) or by a spectator (the unit the camera follows).
+                // This read a field of its own that nothing set and a unit type that does not
+                // exist ('trebuchet' is the site; the engine is 'simple_trebuchet'), so no
+                // ring was ever drawn. The reach is the entity's own `range`.
+                const g = this.game, follow = g && g._camFollow;
+                const sb = (g && g.selectedBuilding) || null;
+                const oneUnit = (this.selectedUnits && this.selectedUnits.length === 1) ? this.selectedUnits[0]
+                    : (follow && follow.kind === 'units' && follow.units && follow.units.length === 1 && follow.units[0].selected ? follow.units[0] : null);
                 let rangeTarget = null, rangeR = 0, rangeCol = null;
                 if (sb && sb.health > 0 && !sb.underConstruction && !(this.entityHidden && this.entityHidden(sb, 'building'))) {
                     if (sb.type === 'tower') {
-                        rangeTarget = sb; rangeR = sb.attackRange || 18; rangeCol = [0.86, 0.42, 0.35];
+                        rangeTarget = sb; rangeR = sb.range || 18; rangeCol = [0.86, 0.42, 0.35];
                     } else if (sb.type === 'trebuchet' || sb.type === 'trebuchet_advanced') {
-                        rangeTarget = sb; rangeR = sb.attackRange || sb.range || (sb.type === 'trebuchet_advanced' ? 60 : 50); rangeCol = [0.87, 0.77, 0.54];
+                        rangeTarget = sb; rangeR = sb.range || (sb.type === 'trebuchet_advanced' ? 60 : 50); rangeCol = [0.87, 0.77, 0.54];
                     }
-                } else if (oneUnit && oneUnit.health > 0 && (oneUnit.type === 'trebuchet' || oneUnit.type === 'advanced_trebuchet') && !(this.entityHidden && this.entityHidden(oneUnit, 'unit'))) {
-                    rangeTarget = oneUnit; rangeR = oneUnit.range || 50; rangeCol = [0.87, 0.77, 0.54];
+                } else if (oneUnit && oneUnit.health > 0 && (oneUnit.type === 'simple_trebuchet' || oneUnit.type === 'advanced_trebuchet') && !(this.entityHidden && this.entityHidden(oneUnit, 'unit'))) {
+                    rangeTarget = oneUnit; rangeR = oneUnit.range || (oneUnit.type === 'advanced_trebuchet' ? 60 : 50); rangeCol = [0.87, 0.77, 0.54];
                 }
                 if (rangeTarget && rangeR > 0) {
                     const inner = rangeR > 35 ? 0.994 : 0.988;

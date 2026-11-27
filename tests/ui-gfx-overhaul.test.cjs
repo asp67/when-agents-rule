@@ -174,9 +174,9 @@ test('G2 & G4 runtime smoke: EngineRenderer._assembleFrame executes cleanly with
     const r = Object.create(ctx.EngineRenderer.prototype);
     const ai = { id: 'p1', seat: 0, _eliminated: false, _wonderHold: 540000 };
     const tc = { id: 'b_tc', type: 'town_center', owner: 'p1', x: 0, z: 0, health: 500, maxHealth: 500 };
-    const tower = { id: 'b_tw', type: 'tower', owner: 'p2', x: 25, z: 0, health: 200, maxHealth: 200, attackRange: 18 };
+    const tower = { id: 'b_tw', type: 'tower', owner: 'p2', x: 25, z: 0, health: 200, maxHealth: 200, range: 18 };
     const wonder = { id: 'b_w', type: 'wonder', isWonder: true, owner: 'p1', x: -20, z: 10, health: 1000, maxHealth: 1000 };
-    const treb = { id: 'u_t', type: 'trebuchet', owner: 'p1', x: -10, z: -10, health: 100, range: 50 };
+    const treb = { id: 'u_t', type: 'simple_trebuchet', owner: 'p1', x: -10, z: -10, health: 100, range: 50 };
     const ghostUnit = {
         x: 12, z: -8, _fade: 0.4,
         _engine: {
@@ -196,7 +196,7 @@ test('G2 & G4 runtime smoke: EngineRenderer._assembleFrame executes cleanly with
         _geo: new Map(), _projectiles: [], _rings: [], _ghosts: [], _rubble: [], _breaks: [],
         _seatGhosts: new Map([['u', { kind: 'unit', ent: ghostUnit }], ['b', { kind: 'building', ent: ghostBld }]]),
         tex: { white: {}, mote: {}, ring: {}, shadow: {}, rock: {} }, WHITE: [1, 1, 1],
-        units: [], buildings: [tc, tower, wonder], selectedBuilding: tower, selectedUnits: [treb],
+        units: [], buildings: [tc, tower, wonder], selectedBuilding: null, selectedUnits: [treb],   // the selected building is the game's (b1293)
         entityHidden: () => false, _cull: () => false, _fow: () => null,
         intentMarks: () => [
             { from: { x: -10, z: -10 }, to: { x: 25, z: 0 }, marker: false, refused: false, verdict: 'ok', alpha: 1, color: '#e6c27a', action: 'attack_target', params: { targetId: 'b_tw' } },
@@ -204,7 +204,7 @@ test('G2 & G4 runtime smoke: EngineRenderer._assembleFrame executes cleanly with
             { from: { x: 0, z: 0 }, to: { x: 15, z: 15 }, marker: false, refused: true, verdict: 'invalid', alpha: 1, color: '#9aa4b1', action: 'move_units', params: {} }
         ],
         game: {
-            spectatorMode: true, wonderPace: 1, wonderRequired: 600,
+            spectatorMode: true, wonderPace: 1, wonderRequired: 600, selectedBuilding: tower,
             aiManager: { aiPlayers: [ai] },
             openAIAIManager: { aiControllers: [{ id: 'p1', pending: true, paused: false, aiPlayer: ai }] }
         }
