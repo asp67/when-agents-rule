@@ -8,14 +8,15 @@
 //            the minimap's seat knob already draws (game.seatDiscoveryGrid)
 //   rivals   a rival's unit is drawn only while it is in the seat's sight; a rival's
 //            building once discovered stays, under the haze, as buildings do
-//   nodes    a tree, a mine or a herd is drawn once the seat itself has found it
+//   nodes    a tree, a mine or a herd is drawn once the seat itself has found it: as it
+//            is while the seat sees it, and as a ghost of what it last saw there otherwise
 //   ghosts   what the seat still believes but cannot see: a rival unit where it was
 //            last seen, and a building that has fallen out of sight since. These are
 //            the seat's own memory (unit memory, last-seen buildings), the same its
 //            state is built from at every decision.
 //
 // A viewing aid and nothing else. It reads the match and writes one thing: its hooks
-// on the renderer (fogView, entityHidden, entityFade, nodeHidden). No seat's state changes and no transcript
+// on the renderer (fogView, entityHidden, entityFade, nodeHidden, nodeMemory). No seat's state changes and no transcript
 // records that anybody looked.
 //
 // The fog picture is drawn by the fog manager's own code on a second set of canvases:
@@ -69,6 +70,7 @@ class SeatView {
             r.entityHidden = this.on() ? (e, kind) => this.hidden(e, kind) : null;
             r.entityFade = this.on() ? (e, kind) => this.fadeOf(e, kind) : null;
             r.nodeHidden = this.on() ? (res, idx) => this.nodeHidden(res, idx) : null;
+            r.nodeMemory = this.on() ? (res, idx) => this.nodeMemory(res, idx) : null;
             if (!this.on() && typeof r.setSeatGhosts === 'function') r.setSeatGhosts(null);
         }
         if (this.on()) this.refresh();
@@ -129,6 +131,19 @@ class SeatView {
         if (!ai || !res) return false;
         if (ai._knownResIdx && ai._knownResIdx.has) return !ai._knownResIdx.has(idx);
         return !this.fog.isPositionVisible(res.x, res.z);
+    }
+
+    // What the seat believes is in a node it cannot see right now, or null while the node is
+    // in its sight (build 1311). In sight a node is drawn as it is. Out of sight the renderer
+    // draws a ghost of what the seat last saw there: a rival may have emptied the node since,
+    // and the seat does not know. The amount is the one its state gives for a node out of
+    // sight (OpenAIAIManager.knownAmount): the one remembered, and the node's own where
+    // nothing is remembered of it yet or the seat keeps no amounts (a rule-based one).
+    nodeMemory(res, idx) {
+        const ai = this.ai();
+        if (!ai || !res || this.fog.isPositionCurrentlyVisible(res.x, res.z)) return null;
+        const seen = ai._knownResAmt ? ai._knownResAmt[idx] : null;
+        return seen != null ? seen : res.amount;
     }
 
     // What the seat believes and cannot see: where the model's state still lists a

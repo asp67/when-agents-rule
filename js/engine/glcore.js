@@ -181,6 +181,17 @@
         };
     };
 
+    // A second set of corners for a mesh that is already on the card: positions of its own,
+    // all at one point to begin with, and the first mesh's normals, texture coordinates and
+    // indices. For drawing a part of a merged mesh in another pass: whoever does moves that
+    // part's corners from the one set to the other (the model's view's ghost nodes).
+    GLCore.createTwinBuffers = (gl, buffers, corners) => {
+        const position = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, position);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(corners * 3), gl.DYNAMIC_DRAW);
+        return { position, normal: buffers.normal, uv: buffers.uv, bone: null, index: buffers.index, count: buffers.count, twin: true };
+    };
+
     // Draws a mesh. With vertex array objects the mesh is pointed at once per program
     // and remembered: a draw is then three calls instead of some ten, which is most of what
     // a draw call costs the page. The array is let go again after every draw, so nothing
@@ -210,7 +221,8 @@
         const vao = GLCore.vaoOf(gl);
         if (buffers.arrays) { if (vao) for (const a of buffers.arrays.values()) vao.remove(a); buffers.arrays = null; }
         // A list of instances owns its list only: the mesh it places belongs to whoever made it.
-        for (const k of buffers.shared ? ['instance'] : ['position', 'normal', 'uv', 'bone', 'index']) if (buffers[k]) gl.deleteBuffer(buffers[k]);
+        // A twin owns its positions only: the rest is the mesh's it was made beside.
+        for (const k of buffers.shared ? ['instance'] : buffers.twin ? ['position'] : ['position', 'normal', 'uv', 'bone', 'index']) if (buffers[k]) gl.deleteBuffer(buffers[k]);
     };
 
     // Points the program's attributes at a mesh's buffers.

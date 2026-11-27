@@ -139,7 +139,38 @@ test('it shows the resource nodes this seat has found, not the ones another seat
     // The renderer asks it for every node, and while the view is on nothing else decides: a node
     // the seat found just inside the rim of a sight circle is drawn although the fog's square
     // under it stayed dark (the seat measures exactly, the fog in whole squares; build 1310).
-    assert.match(read('js/engine/gamerenderer.js'), /const vis = this\.nodeHidden \? there && !this\.nodeHidden\(res, mb\.i\)\r?\n\s+: there && !!\(res\.mesh\.trunk \? res\.mesh\.trunk\.visible : res\.mesh\.visible\);/);
+    // (What the renderer draws of it is held in tests/resource-chunks.test.cjs, where every flag is down.)
+    const r = read('js/engine/gamerenderer.js');
+    assert.match(r, /const hidden = this\.nodeHidden, memory = hidden \? this\.nodeMemory : null;/);
+    assert.match(r, /vis = amount > 0 && !hidden\(res, mb\.i\);\r?\n\s+\} else vis = !!\(res\.mesh && amount > 0 && \(res\.mesh\.trunk \? res\.mesh\.trunk\.visible : res\.mesh\.visible\)\);/);
+});
+
+// Ghost nodes (build 1311): what the seat cannot see right now is drawn as it last saw it.
+test('a node out of the seat\'s sight is remembered: the amount it last saw, and nothing while it is in sight', () => {
+    const { View, game, a } = world();
+    const v = new View(game);
+    assert.equal(game.renderer.nodeMemory, undefined);
+    v.set(0);
+    const memory = game.renderer.nodeMemory;
+    assert.equal(typeof memory, 'function');
+    const inSight = { type: 'gold', x: west, z: 0, amount: 500 }, hazed = { type: 'gold', x: strip, z: 0, amount: 0 }, dark = { type: 'stone', x: east, z: 0, amount: 350 };
+    a._knownResIdx = new Set([0, 1, 2]);
+    // In sight: drawn as it is, so nothing is said. Out of sight: what the seat last saw there,
+    // also of a node a rival has emptied since.
+    a._knownResAmt = { 0: 420, 1: 300 };
+    assert.deepEqual([memory(inSight, 0), memory(hazed, 1)], [null, 300]);
+    // Nothing remembered of it yet (found between two decisions): the seat's state gives the
+    // amount there is (OpenAIAIManager.knownAmount), and so does the view.
+    assert.equal(memory(dark, 2), 350);
+    // A seat that keeps no amounts (a rule-based one) reads the node as it is.
+    delete a._knownResAmt;
+    assert.deepEqual([memory(hazed, 1), memory(dark, 2)], [0, 350]);
+    // The seat emptied it itself and knows: nothing is left to draw.
+    a._knownResAmt = { 2: 0 };
+    assert.equal(memory(dark, 2), 0);
+    v.set(null);
+    assert.equal(game.renderer.nodeMemory, null);
+    assert.doesNotMatch(read('js/seat-view.js').replace(/\/\/.*$/gm, ''), /_knownResAmt\[[^\]]+\]\s*=|_knownResIdx\.(add|delete)/);   // it reads the memory and writes none
 });
 
 // The switch, on the page class with a stand-in for the view.

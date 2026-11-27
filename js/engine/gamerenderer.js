@@ -176,10 +176,11 @@
             this._fogTex = null;              // GL texture wrapping the fog canvas
             // The model's view (js/seat-view.js): one seat's fog in place of the match's, and
             // filters for the units, buildings and resource nodes that seat cannot see or has
-            // not found. All null: everything.
+            // not found, and what it remembers of a node out of its sight. All null: everything.
             this.fogView = null;
             this.entityHidden = null;
             this.nodeHidden = null;
+            this.nodeMemory = null;
             // A second picture of the same world at the same moment (js/second-camera.js):
             // someone names a place and a 2-D canvas to put it in. Null: one picture.
             this.secondView = null;
@@ -1376,7 +1377,10 @@
             const CH = EngineRenderer.RES_CHUNK, byKey = new Map(), list = [];
             for (let i = 0; i < rs.length; i++) {
                 const res = rs[i];
-                if (!res.mesh || res.amount <= 0) continue;   // depleted nodes never return
+                // An emptied node is kept (build 1311). It was left out, since it never returns;
+                // but in the model's view a seat that last saw it full still believes in it,
+                // and its ghost must be there after the chunks are built again as well. A match
+                // that has run from its start holds every felled tree in its chunks anyway.
                 const cx = Math.floor(res.x / CH), cz = Math.floor(res.z / CH), key = cx + ',' + cz;
                 let c = byKey.get(key);
                 if (!c) { c = { x: (cx + 0.5) * CH, z: (cz + 0.5) * CH, members: [], groups: null, shown: 0 }; byKey.set(key, c); list.push(c); }
@@ -1388,7 +1392,10 @@
 
         _freeResourceChunks() {
             const gl = this.gl;
-            for (const c of this._resChunks.list) for (const g of c.groups || []) GLCore.deleteMeshBuffers(gl, g.buf);
+            for (const c of this._resChunks.list) for (const g of c.groups || []) {
+                if (g.ghostBuf) GLCore.deleteMeshBuffers(gl, g.ghostBuf);
+                GLCore.deleteMeshBuffers(gl, g.buf);
+            }
             this._resChunks = null;
         }
 
@@ -1452,14 +1459,32 @@
             c.shown = c.members.length;
         }
 
+        // The second set of corners of a chunk's batches (build 1311): what is drawn as a
+        // ghost has its corners there and none in the first set. Made when a chunk first has
+        // a ghost to show, so a match nobody watches through a seat's eyes never pays for it.
+        // A shadow has none: a ghost casts nothing.
+        _buildGhostBuffers(c) {
+            const one = this._identity || (this._identity = M().identity());
+            for (const g of c.groups) {
+                if (g.caster) continue;
+                g.ghostBuf = GLCore.createTwinBuffers(this.gl, g.buf, g.pos.length / 3);
+                g.ghost = { buf: g.ghostBuf, tex: g.tex, tint: g.tint || undefined, model: one, alpha: EngineRenderer.NODE_GHOST };
+            }
+            c.ghosts = true;
+        }
+
         // scale: how large the node is drawn, about the point it stands on (see
         // _resourceScale). 1, or left out, is the size it was built at.
-        _showResource(mb, show, scale = 1) {
+        // ghost: drawn from the second set of corners (see _buildGhostBuffers), which the
+        // chunk must have by then. A set the node was not in and is not going into is not
+        // written, so showing or hiding a node costs what it did before there were ghosts.
+        _showResource(mb, show, scale = 1, ghost = false) {
             const gl = this.gl;
+            const wasSolid = mb.shown && !mb.ghost, wasGhost = mb.shown && !!mb.ghost;
+            const solid = show && !ghost, asGhost = show && ghost;
             for (const r of mb.ranges) {
                 const g = r.g, n = r.count * 3;
-                gl.bindBuffer(gl.ARRAY_BUFFER, g.buf.position);
-                let data;
+                let data = null;
                 if (show && scale === 1) data = g.pos.subarray(r.start * 3, r.start * 3 + n);
                 else if (show) {
                     if (!this._resScaled || this._resScaled.length < n) this._resScaled = new Float32Array(n * 2);
@@ -1470,13 +1495,20 @@
                         data[k + 1] = g.pos[from + k + 1] * scale;
                         data[k + 2] = cz + (g.pos[from + k + 2] - cz) * scale;
                     }
-                } else {
-                    if (!this._resZeros || this._resZeros.length < n) this._resZeros = new Float32Array(n * 2);
-                    data = this._resZeros.subarray(0, n);
                 }
-                gl.bufferSubData(gl.ARRAY_BUFFER, r.start * 12, data);
+                if (!this._resZeros || this._resZeros.length < n) this._resZeros = new Float32Array(n * 2);
+                const zeros = this._resZeros.subarray(0, n);
+                if (wasSolid || solid) {
+                    gl.bindBuffer(gl.ARRAY_BUFFER, g.buf.position);
+                    gl.bufferSubData(gl.ARRAY_BUFFER, r.start * 12, solid ? data : zeros);
+                }
+                if (g.ghostBuf && (wasGhost || asGhost)) {
+                    gl.bindBuffer(gl.ARRAY_BUFFER, g.ghostBuf.position);
+                    gl.bufferSubData(gl.ARRAY_BUFFER, r.start * 12, asGhost ? data : zeros);
+                }
             }
             mb.shown = show;
+            mb.ghost = asGhost;
             mb.scale = show ? scale : 1;
         }
 
@@ -1486,9 +1518,11 @@
         // life and not with every load carried off. A tree stays whole until it is felled.
         // The share is what is left of what the node started with (its health, which the
         // rules never change).
-        _resourceScale(res) {
+        // amount: what is drawn as left in it. The node's own, or what a seat last saw there
+        // (a ghost in the model's view).
+        _resourceScale(res, amount = res && res.amount) {
             if (!res || res.type === 'wood' || !(res.health > 0)) return 1;
-            const share = res.amount / res.health;
+            const share = amount / res.health;
             for (const [from, scale] of EngineRenderer.RES_SHRINK) if (share >= from) return scale;
             return 1;
         }
@@ -1496,32 +1530,50 @@
         _pushResourceChunks(dl) {
             const { list } = this._resourceChunks(), rs = this.terrain.resources;
             const margin = EngineRenderer.RES_CHUNK * 0.71 + 14;
+            // The model's view (js/seat-view.js), when it is on. Then the seat's memory decides
+            // alone and the node's own flag, which is the spectator's fog, is not asked:
+            //   - what the seat has not found is left out, and what it has found is drawn even
+            //     where the fog's square stayed dark (the seat's sight is measured exactly and
+            //     the fog in whole squares, so a node just inside the rim of a sight circle is
+            //     known on ground the fog never opened);
+            //   - a node out of its sight is a ghost of what it last saw there (build 1311):
+            //     that amount's size, also where a rival has emptied the node since.
+            const hidden = this.nodeHidden, memory = hidden ? this.nodeMemory : null;
             for (const c of list) {
-                let want = 0;
+                let want = 0, wantGhosts = 0;
                 for (const mb of c.members) {
                     const res = rs[mb.i];
-                    // The node's own flag is the spectator's fog. In the model's view (js/seat-view.js)
-                    // the seat's memory decides alone: what it has not found is left out, and what
-                    // it has found is drawn even where the fog's square stayed dark. The seat's
-                    // sight is measured exactly and the fog in whole squares, so a node just
-                    // inside the rim of a sight circle is known on ground the fog never opened.
-                    const there = !!(res.mesh && res.amount > 0);
-                    const vis = this.nodeHidden ? there && !this.nodeHidden(res, mb.i)
-                        : there && !!(res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible);
+                    let amount = res.amount, ghost = false, vis;
+                    if (hidden) {
+                        const believed = memory ? memory(res, mb.i) : null;   // null: in sight, drawn as it is
+                        if (believed != null) { ghost = true; amount = believed; }
+                        vis = amount > 0 && !hidden(res, mb.i);
+                    } else vis = !!(res.mesh && amount > 0 && (res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible));
                     mb.want = vis;
-                    mb.wantScale = vis ? this._resourceScale(res) : 1;
+                    mb.wantGhost = vis && ghost;
+                    mb.wantScale = vis ? this._resourceScale(res, amount) : 1;
                     if (vis) want++;
+                    if (mb.wantGhost) wantGhosts++;
                 }
                 if (!want && !c.groups) continue;
                 if (!c.groups) this._buildResourceChunk(c);
-                let shown = 0;
+                if (wantGhosts && !c.ghosts) this._buildGhostBuffers(c);
+                let shown = 0, ghosts = 0;
                 for (const mb of c.members) {
-                    if (mb.want !== mb.shown || (mb.want && mb.wantScale !== mb.scale)) this._showResource(mb, mb.want, mb.wantScale);
+                    if (mb.want !== mb.shown || mb.wantGhost !== !!mb.ghost || (mb.want && mb.wantScale !== mb.scale)) this._showResource(mb, mb.want, mb.wantScale, mb.wantGhost);
                     if (mb.shown) shown++;
+                    if (mb.ghost) ghosts++;
                 }
                 c.shown = shown;
                 if (!shown || this._cull(c.x, c.z, margin)) continue;
-                for (const g of c.groups) (g.caster ? (dl.casters || (dl.casters = [])) : g.blend ? dl.blended : dl.opaque).push(g.entry);
+                // A ghost is drawn in the blended pass, unlit and without a shadow, as a
+                // remembered building is.
+                const solid = shown > ghosts;
+                for (const g of c.groups) {
+                    if (g.caster) { if (solid) (dl.casters || (dl.casters = [])).push(g.entry); continue; }
+                    if (solid) (g.blend ? dl.blended : dl.opaque).push(g.entry);
+                    if (ghosts) dl.blended.push(g.ghost);
+                }
             }
         }
 
@@ -4282,6 +4334,11 @@
     };
     // How large a stone, gold or food site is drawn by what is left of it: [share from, size].
     EngineRenderer.RES_SHRINK = [[0.75, 1], [0.5, 0.86], [0.25, 0.72], [0, 0.58]];
+    // How solid a remembered resource node is drawn in the model's view (build 1311). Less
+    // faint than a remembered building or unit (0.62), on asp67's word, 27 November 2026: a
+    // ghost is drawn unlit and shadowless already, the haze over explored ground lies on top
+    // of it, and late in a match nearly every node a seat knows is one.
+    EngineRenderer.NODE_GHOST = 0.8;
     // Focus on a close-up (tiltShift): full from a camera half-height of near down, none
     // from far up; the sharp band lies around line of the picture (0.5 = its middle,
     // where the camera looks), band of the picture's height to either side; blur is the

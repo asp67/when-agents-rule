@@ -113,7 +113,10 @@ test('without vertex arrays a mesh is pointed at for every draw, as it always wa
 });
 
 test('buffers that are freed are freed through the helper, so their arrays go too', () => {
-    assert.match(read('js/engine/gamerenderer.js'), /for \(const c of this\._resChunks\.list\) for \(const g of c\.groups \|\| \[\]\) GLCore\.deleteMeshBuffers\(gl, g\.buf\);/);
+    // (A chunk's batch may have a second set of corners, for ghost nodes: build 1311. It goes the same way.)
+    assert.match(read('js/engine/gamerenderer.js'), /for \(const c of this\._resChunks\.list\) for \(const g of c\.groups \|\| \[\]\) \{\r?\n\s+if \(g\.ghostBuf\) GLCore\.deleteMeshBuffers\(gl, g\.ghostBuf\);\r?\n\s+GLCore\.deleteMeshBuffers\(gl, g\.buf\);/);
+    // A twin gives back its own positions and nothing of the mesh it was made beside.
+    assert.match(read('js/engine/glcore.js'), /buffers\.shared \? \['instance'\] : buffers\.twin \? \['position'\] : \['position', 'normal', 'uv', 'bone', 'index'\]/);
     // A grass tile is a list of instances since build 1202 (and one of pebbles where it has any).
     assert.match(read('js/engine/grass.js'), /GLCore\.deleteMeshBuffers\(this\.renderer\.gl, tile\.tufts\);\s+if \(tile\.stones\) GLCore\.deleteMeshBuffers\(this\.renderer\.gl, tile\.stones\);/);
     // Nothing in the engine frees a mesh's buffers one by one any more.
