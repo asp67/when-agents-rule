@@ -8658,7 +8658,10 @@ class UIManager {
         if (!rs) return;
         rs.target = step;
         if (Math.abs(step - rs.step) > 40) rs.seekTo = step;   // a jump: shown as one, with its progress
-        if (rs.status === 'running') { rs.busy = true; rs.worker.postMessage({ type: 'to', step }); }
+        // A replay that has ended, or stopped at a divergence, still takes a jump: the frame
+        // that answers it sets the world playing again. Nothing was sent then, and the
+        // slider moved while the stage stood still.
+        if (rs.status === 'running' || rs.status === 'certified' || rs.status === 'diverged') { rs.busy = true; rs.worker.postMessage({ type: 'to', step }); }
         // Still loading: the first request, once it is ready, is for rs.target.
         this.anResimHud();
     }

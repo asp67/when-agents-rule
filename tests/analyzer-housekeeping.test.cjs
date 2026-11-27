@@ -51,3 +51,27 @@ test('the scrubber carries a mark for the rejected turns, the new plans, the fig
     assert.equal(host.innerHTML, '', 'the marks of the file before are gone');
 });
 
+test('a replay that has ended, or stopped at a divergence, still takes a jump', () => {
+    for (const status of ['certified', 'diverged']) {
+        const { u } = page(), posted = [];
+        u.anResimStart = () => { throw new Error('a jump must not restart the replay'); };
+        u.anResimDraw = () => {}; u.anResimFollow = () => {}; u.anResimHud = () => {};
+        const rs = u._anResim = { status, step: 90000, target: 90000, total: 90000, busy: false, playing: false, ents: new Map(),
+            problem: status === 'diverged' ? 'hash differs' : null, worker: { postMessage: m => posted.push(m) } };
+        u.anResimSeek(30000);
+        assert.equal(JSON.stringify(posted), JSON.stringify([{ type: 'to', step: 30000 }]), status + ': the worker is asked');
+        assert.equal(rs.seekTo, 30000);
+        u.anResimMessage(rs, { type: 'frame', step: 30000, checked: 1, ok: true, scene: { matchMs: 1, seats: [], nodes: [] }, fx: [] });
+        assert.deepEqual([rs.status, rs.step, rs.seekTo, rs.problem], ['running', 30000, null, null], status + ': the world is there again');
+    }
+    // Not while it loads (the first request is for the target), and not after a failure.
+    for (const status of ['loading', 'failed']) {
+        const { u } = page(), posted = [];
+        u.anResimHud = () => {};
+        u._anResim = { status, step: 0, target: 0, busy: true, ents: new Map(), worker: { postMessage: m => posted.push(m) } };
+        u.anResimSeek(500);
+        assert.equal(posted.length, 0, status);
+        assert.equal(u._anResim.target, 500);
+    }
+});
+
