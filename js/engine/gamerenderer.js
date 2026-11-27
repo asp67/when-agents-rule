@@ -3,8 +3,8 @@
 // same public methods and entity bookkeeping, drawn by our own WebGL pipeline.
 // It decides nothing about the game: separation and building clearance, which
 // once ran here, are rules in the simulation step (js/simulation/position-rules.js).
-// Locked dimetric camera,
-// procedural textures, EngineBuildings/EngineUnits compositions, fog plane.
+// A 20-degree perspective camera with free yaw and pitch (it was a locked dimetric
+// one when this was written), procedural textures, EngineBuildings/EngineUnits compositions, fog plane.
 //
 // Compatibility shims (the freeze line, documented in ENGINE.md):
 // - this.renderer = { domElement, setSize, render } — input.js binds events to
@@ -12,7 +12,9 @@
 // - this.scene = { add, remove } no-ops — legacy callers (e.g. game.js death
 //   cleanup) may still hand it objects; nothing needs a scene graph anymore.
 // - this.camera / this.cameraTarget accept the game's position.set/lookAt
-//   calls; distance from target maps onto the ortho zoom.
+//   calls; distance from target maps onto the zoom (the half-height of the frame).
+// - updateUnitPosition() is still called by the game and does nothing: a unit is
+//   drawn where the simulation has it.
 // - Entity handles: unit.mesh = {visible, position, rotation}, unit.healthBar =
 //   {material:{color:{setHex}}}, building.mesh = {visible, children: []} — the
 //   exact property surface game.js/fogofwar.js touch, all inert; the engine
@@ -20,7 +22,7 @@
 //   display canvas + a fogDirty flag; we own the texture and the fog plane.
 (function () {
     const M = () => window.M3D;
-    const HALF_PER_DIST = 0.3;   // camera.position.set(distance) → ortho halfH
+    const HALF_PER_DIST = 0.3;   // camera.position.set(distance) → halfH
     // MAX_HALF was 190, which framed the whole map on a landscape window and nowhere
     // else. Measured what the narrow end actually needs: the stage runs 0.486 of window
     // height, so a 920-wide window 1600 tall gives a stage aspect of 1.18 and wants 338.
