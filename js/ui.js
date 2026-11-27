@@ -391,7 +391,9 @@ class UIManager {
     // (errors/hallucinations, battles, plan rewrites, age-ups, Wonders).
     anRenderSwimlane(a) {
         const host = document.getElementById('anSwimlane');
-        if (!host || !a || !a.order || a.order.length < 2) return;
+        if (!host) return;
+        // A file with nothing to mark shows no marks, not those of the file before it.
+        if (!a || !a.order || a.order.length < 2) { host.innerHTML = ''; this._anSwimSig = null; return; }
         const sig = (a.fileName || '') + ':' + a.order.length;
         if (this._anSwimSig === sig) return;
         this._anSwimSig = sig;
@@ -415,20 +417,19 @@ class UIManager {
         for (let i = 0; i < a.order.length; i++) {
             const r = a.order[i];
             if (!r) continue;
-            const hasErr = (typeof Analyzer !== 'undefined' && Analyzer.hasError) ? Analyzer.hasError(r) : !!r._hasError;
-            if (hasErr && i - lastErr >= Math.max(1, Math.floor(total / 70))) {
+            if (r.type) continue;                    // a marker is no turn of a model
+            if (a.hasError(r) && i - lastErr >= Math.max(1, Math.floor(total / 70))) {
                 lastErr = i;
                 add(i, 'error', `#${i + 1} · ${r.name || r.playerId || ''} (${t('log.rejected')})`);
-            } else if (r._planChanged && i - lastPlan >= Math.max(2, Math.floor(total / 50))) {
+            } else if (r._planNew && i - lastPlan >= Math.max(2, Math.floor(total / 50))) {
                 lastPlan = i;
                 add(i, 'plan', `#${i + 1} · ${r.name || r.playerId || ''} (${t('log.plan')})`);
             }
         }
         // Chapter-level major milestones (battles, ages, wonders)
-        const chapters = typeof a.chapters === 'function' ? a.chapters() : (a._chapters || []);
-        for (const ch of chapters) {
+        for (const ch of a.chapters || []) {
             if (!ch || ch.t == null) continue;
-            const k = ch.kind === 'wonder' || ch.kind === 'wonder-raised' || ch.kind === 'wonder-countdown' ? 'wonder'
+            const k = ch.kind === 'wonder' || ch.kind === 'wonder-raised' || ch.kind === 'wonder-countdown' || ch.kind === 'wonder-lost' ? 'wonder'
                 : ch.kind === 'battle' ? 'battle'
                 : ch.kind === 'age' ? 'age' : null;
             if (k) add(nearestIdx(ch.t), k, ch.text || k);
