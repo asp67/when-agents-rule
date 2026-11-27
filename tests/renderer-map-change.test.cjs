@@ -19,6 +19,33 @@ function load() {
 }
 const terrain = (seed, difficulty = 'easy') => ({ seed, difficulty, size: 800, resources: [...Array(60)].map((_, i) => ({ type: i % 5 ? 'wood' : 'stone', amount: 100, x: -300 + (i % 10) * 60, z: -250 + Math.floor(i / 10) * 90 })) });
 
+test('another theme or map size gives the old textures back, and the same one builds nothing', () => {
+    const { R, T, I } = load();
+    I.setMapSize(800);
+    // The painters draw on canvases a test has none of: each hands back a named stand-in.
+    for (const k of Object.keys(T)) if (typeof T[k] === 'function' && !/^(rng|coastSampler|coastNoise|setMapSize|grassCoverSampler|noise)/.test(k)) T[k] = (...a) => ({ painter: k });
+    R._averageColor = () => [128, 128, 128];
+    const deleted = [];
+    const r = Object.assign(Object.create(R.prototype), { gl: { deleteTexture: t => deleted.push(t) } });
+    r._buildTextures('summer');
+    const first = Object.values(r.tex);
+    assert.ok(first.length >= 30, first.length + ' textures a theme');
+    assert.equal(new Set(first).size, first.length);
+    assert.equal(deleted.length, 0, 'nothing to give back the first time');
+    r._buildTextures('summer');
+    assert.deepEqual(Object.values(r.tex), first, 'the same theme on the same map is the same set');
+    assert.equal(deleted.length, 0);
+    r._buildTextures('winter');
+    const second = Object.values(r.tex);
+    assert.deepEqual(new Set(deleted), new Set(first), 'every texture of the old set, once');
+    assert.equal(deleted.length, first.length);
+    assert.ok(second.every(t => !deleted.includes(t)), 'and none of the new');
+    I.setMapSize(1200);                                    // the ground texture is the map's size
+    r._buildTextures('winter');
+    assert.equal(deleted.length, first.length + second.length);
+    assert.ok(Object.values(r.tex).every(t => !deleted.includes(t)));
+});
+
 test('the ground scatter is sown over a map of any size, as dense on each, and on the 800 map as it was', () => {
     const { R, I } = load();
     const at800 = R.scatterReach(800), at1200 = R.scatterReach(1200);
@@ -44,3 +71,27 @@ test('the ground scatter is sown over a map of any size, as dense on each, and o
     I.setMapSize(800);
 });
 
+test('a new map gives the last one\'s shore foam back, and sows its own scatter to its own edge', () => {
+    const { R, I, freed } = load();
+    const r = Object.assign(Object.create(R.prototype), { gl: {}, WHITE: [1, 1, 1], _resEntries: new WeakMap(), _cull: () => false, _geo: new Map(),
+        _buildTextures(theme) { this._theme = theme; }, tex: new Proxy({}, { get: (o, k) => (o[k] = o[k] || { name: k }) }), fogView: null, game: null,
+        units: [], buildings: [], _projectiles: [], _rings: [], _ghosts: [] });
+    I.setMapSize(800);
+    r.setTerrain(terrain('a'));
+    const foam = r._foam.map(f => f.buf);
+    assert.equal(foam.length, 1);
+    assert.ok(!freed.includes(foam[0]));
+    // The bushes of the scatter (the reeds and rocks of the shore are sown by the coast itself).
+    const bushes = () => r._props.filter(p => p.kind === 'sphere' && p.texName === 'worldFoliage');
+    const reach = () => Math.max(...bushes().map(p => Math.max(Math.abs(p.x), Math.abs(p.z))));
+    assert.ok(reach() <= 345, 'on the 800 map the bushes stay inside 340: ' + reach().toFixed(0));
+    const n800 = bushes().length;
+    assert.ok(n800 >= 260 && n800 <= 520, n800 + ' bushes on the 800 map, as ever');
+    I.setMapSize(1200);
+    r.setTerrain(Object.assign(terrain('b'), { size: 1200 }));
+    assert.ok(freed.includes(foam[0]), 'the foam of the map before is freed');
+    assert.ok(!freed.includes(r._foam[0].buf), 'the new map\'s is not');
+    assert.ok(reach() > 450 && reach() <= 545, 'the 1200 map is sown to ' + reach().toFixed(0) + ' of 540');
+    assert.ok(bushes().length > n800 * 2 && bushes().length < n800 * 3, bushes().length + ' bushes, ' + n800 + ' on the 800 map');
+    I.setMapSize(800);
+});

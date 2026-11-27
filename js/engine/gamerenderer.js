@@ -327,6 +327,10 @@
             // Each small texture remembers its average colour: from far away a unit is
             // drawn in those (b1082, _unitPalette).
             const T = (c, o) => { const t = GLCore.createTextureFromCanvas(gl, c, o); t._avg = EngineRenderer._averageColor(c); return t; };
+            // The set it replaces goes back to the graphics card: another theme or map size
+            // built some forty textures more and kept the old ones, match after match.
+            const old = this.tex;
+            if (old) for (const k of Object.keys(old)) { try { gl.deleteTexture(old[k]); } catch (e) {} }
             this.tex = {
                 coast: T(TexGen.coastMask(Math.round(512 * texScale)), { clamp: true }),
                 terrain: T(TexGen.terrain(theme, TERRAIN_SEED, Math.round(1024 * texScale), TexGen.TERRAIN_WORLD, TexGen.TERRAIN_LAND), { clamp: true }),
@@ -857,6 +861,7 @@
             // TexGen.coastSampler, so they cannot drift apart again. A closed loop
             // also retires the corner hack the strips needed: there are no
             // overlapping ends left to double up and glow.
+            for (const f of this._foam || []) GLCore.deleteMeshBuffers(this.gl, f.buf);   // the last map's
             this._foam = [{
                 buf: GLCore.createMeshBuffers(this.gl, this._coastRibbonMesh()),
                 tex: this.tex.foam, tint: this.WHITE, model: M().identity()
