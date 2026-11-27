@@ -8043,7 +8043,12 @@ class UIManager {
         const f = input && input.files && input.files[0];
         if (!f) return;
         const fr = new FileReader();
+        // The picker is emptied once the file is in hand: a browser reports no change when
+        // the same file is picked again, so a transcript saved anew under its old name, or
+        // one opened again after a sample, did nothing.
+        const done = () => { try { input.value = ''; } catch (e) {} };
         fr.onload = () => {
+            done();
             this.anStopPlay();   // a new file starts stopped, wherever the old one was
             this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
             try { this.analyzer.load(String(fr.result || ''), f.name); }
@@ -8052,7 +8057,7 @@ class UIManager {
             this.resetChartCache();
             this.anRender();
         };
-        fr.onerror = () => this.showErrorMessage(t('an.badFile'));
+        fr.onerror = () => { done(); this.showErrorMessage(t('an.badFile')); };
         fr.readAsText(f);
     }
 

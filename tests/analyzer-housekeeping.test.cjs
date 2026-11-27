@@ -75,3 +75,24 @@ test('a replay that has ended, or stopped at a divergence, still takes a jump', 
     }
 });
 
+test('the picker is emptied once its file is read, so the same file can be picked again', () => {
+    const { u, context } = page();
+    const readers = [];
+    context.FileReader = class { constructor() { readers.push(this); } readAsText(f) { this.file = f; } };
+    const loaded = [];
+    Object.assign(u, { anStopPlay() {}, resetChartCache() {}, anRender() {}, showErrorMessage: m => loaded.push('error ' + m),
+        analyzer: { load: (text, name) => loaded.push(name + ':' + text) } });
+    const input = { files: [{ name: 'match.jsonl' }], value: 'C:\\fakepath\\match.jsonl' };
+    u.anLoadFile(input);
+    assert.equal(input.value, 'C:\\fakepath\\match.jsonl', 'not before the file is in hand');
+    readers[0].result = 'one'; readers[0].onload();
+    assert.deepEqual(loaded, ['match.jsonl:one']);
+    assert.equal(input.value, '', 'emptied: picking match.jsonl again is a change again');
+    // A file that cannot be read empties it too.
+    input.value = 'C:\\fakepath\\match.jsonl';
+    u.anLoadFile(input);
+    readers[1].onerror();
+    assert.equal(input.value, '');
+    assert.equal(loaded[1], 'error T:an.badFile');
+});
+
