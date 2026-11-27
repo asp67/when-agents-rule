@@ -834,6 +834,9 @@ class OpenAIAIManager {
                 return !priorFrom;
             }
             case 'alreadyResearching': {
+                // A state that says nothing of research shows no free slot either (b1287):
+                // the ledger read this so, and the two are one question.
+                if (st.research == null) return false;
                 const running = !!(st.research && st.research.current);
                 if (running) return false;
                 const priorRes = prior.some(c => c && c.action === 'research_tech' && c.ok !== false);

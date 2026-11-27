@@ -41,6 +41,9 @@
         'town_center', 'barracks', 'archery_range', 'stable', 'siege_workshop', 'academy', 'temple'
     ]);
 
+    // Only for a state that carries no unit list (see trainerOf): a hand-kept copy of what
+    // the rules say, and so behind them. It lacks eight units of the civilizations and
+    // names three that exist nowhere.
     const UNIT_TRAINER_MAP = Object.freeze({
         worker: 'town_center',
         militia: 'barracks', warrior: 'barracks', champion: 'barracks',
@@ -340,6 +343,28 @@
         return false;
     }
 
+    // The building that trains a unit, as the state the seat was shown says it (b1287): its
+    // unit list is keyed by the building, then the age -- units.trainable and units.blocked,
+    // trainableUnits in older transcripts. That is the rule of the match the transcript is
+    // of; the table above is asked only when the state carries no list.
+    function trainerOf(st, unitType) {
+        const want = String(unitType || '').toLowerCase();
+        if (!want) return null;
+        const lists = st ? [st.units && st.units.trainable, st.units && st.units.blocked, st.trainableUnits] : [];
+        for (const byHost of lists) {
+            if (!byHost || typeof byHost !== 'object' || Array.isArray(byHost)) continue;
+            for (const host of Object.keys(byHost)) {
+                const byAge = byHost[host];
+                if (!byAge || typeof byAge !== 'object') continue;
+                for (const age of Object.keys(byAge)) {
+                    const list = byAge[age];
+                    if (Array.isArray(list) && list.some(x => x && String(x.id != null ? x.id : x).toLowerCase() === want)) return host;
+                }
+            }
+        }
+        return UNIT_TRAINER_MAP[want] || null;
+    }
+
     function reconcileOutcomesWithState(st, parsed, outcomes) {
         if (!outcomes || !outcomes.length || !st || typeof st !== 'object') return outcomes;
         const rawCmds = rawCommandList(parsed);
@@ -393,13 +418,13 @@
                         break;
                     case 'unitBuildingNotBuilt': {
                         const ut = p.unitType ? String(p.unitType) : null;
-                        const mapped = ut ? UNIT_TRAINER_MAP[ut.toLowerCase()] : null;
+                        const mapped = ut ? trainerOf(st, ut) : null;
                         isStale = !!(ut && (trainableIncludes(st, ut) || (mapped && hasFb && fb.some(b => b && b.type === mapped))));
                         break;
                     }
                     case 'buildingUnderConstr': {
                         const ut = p.unitType ? String(p.unitType) : null;
-                        const mapped = ut ? UNIT_TRAINER_MAP[ut.toLowerCase()] : null;
+                        const mapped = ut ? trainerOf(st, ut) : null;
                         isStale = !!(mapped && hasFb && fb.some(b => b && b.type === mapped && (!b.state || b.state === 'complete')));
                         break;
                     }

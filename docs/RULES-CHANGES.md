@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1287: the harness and the ledger read a refusal the same way (27 November 2026)
+
+**The harness hash moves; no recorded verdict changes.** Whether a refusal was the model's or the world moved while it thought (build 1236) is asked twice: by the harness as a match runs and by the ledger when it scores a transcript, each from a table of its own. `tests/stale-check-parity.test.cjs` now puts 57 cases to both. They differed in one: "already researching" against a state that says nothing of research, which the harness read as the world having moved. A state that shows no free research slot shows nothing to be wrong about; the harness now reads it as the ledger does. Every state the harness writes carries the research block, so no match is read differently.
+
+The ledger also takes the building that trains a unit from the state's own unit list instead of a hand-kept table that lacked eight units of the civilizations (`tests/ledger-trainer-of.test.cjs`). No shipped match's scores change.
+
 ## Build 1280: the state schema describes every nested field the state carries (27 November 2026)
 
 **The harness hash moves; nothing a model reads changes.** `game-state-schema.json` is the published contract of the state, and it is written by hand. Its tests compared top-level keys and a few nested shapes; the checker held an object to its property list only where the schema said `additionalProperties: false`. Between them the state had grown some twenty nested fields the contract never described, and the contract still described some that were gone.
