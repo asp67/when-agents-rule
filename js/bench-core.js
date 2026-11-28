@@ -139,7 +139,7 @@ function startFixture(realm, civs, mapSeed = null) {
     });
     g.openAIAIManager = realm.exec('new OpenAIAIManager(game)');
     g.fogOfWar = realm.exec('new FogOfWarManager(game)');
-    g.lastFrameTime = realm.runtime.Date.now();
+    g.lastFrameTime = realm.exec('Game.frameNow()');
     g.gameStarted = true;
     realm.rafQueue.push(() => g.gameLoop());
     return g.aiManager.aiPlayers;

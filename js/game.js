@@ -563,7 +563,7 @@ class Game {
         if (this._arenaCover && this.ui.floatArenaLineup) this.ui.floatArenaLineup(this._arenaCover);
         this.sound?.matchStart();
         // Start game loop
-        this.lastFrameTime = Date.now();
+        this.lastFrameTime = Game.frameNow();
         this.wonderTimer = 0;
         this.wonderHeld = false;
         this.gameLoop();
@@ -796,7 +796,7 @@ class Game {
         }
         
         // Start game loop
-        this.lastFrameTime = Date.now();
+        this.lastFrameTime = Game.frameNow();
         this.gameLoop();
     }
     
@@ -849,11 +849,19 @@ class Game {
         });
     }
 
-    gameLoop() {
+    gameLoop(frameTime) {
         if (!this.gameStarted) return;
         this.initBackgroundDriver(); // idempotent; first call spins up the worker
-        this.tick();
-        requestAnimationFrame(() => this.gameLoop());
+        this.tick(frameTime);
+        requestAnimationFrame(t => this.gameLoop(t));
+    }
+
+    // The clock the simulation is paced by: the browser's monotonic clock, the one the
+    // animation frames are stamped with. Date.now() is whole milliseconds and moves when
+    // the system clock is set.
+    static frameNow() {
+        return (typeof performance !== 'undefined' && performance && typeof performance.now === 'function')
+            ? performance.now() : Date.now();
     }
 
     // One logic tick: advance the simulation by the real time elapsed since the
@@ -861,14 +869,25 @@ class Game {
     // by the background worker while it is hidden — both paths share
     // lastFrameTime, so interleaved calls simply split the elapsed time between
     // them (no double-simulation possible).
-    tick() {
-        const currentTime = Date.now();
-        let elapsed = currentTime - this.lastFrameTime;
-        this.lastFrameTime = currentTime;
-        if (!(elapsed > 0)) elapsed = 0;
+    //
+    // A frame is paced by its own timestamp, the moment the browser began it, not by
+    // the clock read here. This tick runs after the renderer has drawn in the same
+    // frame, so a clock read here was late by however long that picture took -- and a
+    // frame drawn slower than the one before gave its units a longer step, the next a
+    // shorter one: units slipped forward and back against a smoothly following camera
+    // (the close-up jitter, measured on two recordings on 28 Nov 2026).
+    tick(frameTime) {
+        const currentTime = Date.now();   // wall clock: the timeline and the info card
+        const clockNow = (typeof frameTime === 'number' && Number.isFinite(frameTime)) ? frameTime : Game.frameNow();
+        let elapsed = clockNow - this.lastFrameTime;
         // Keep the FULL elapsed time, but cap a single catch-up so an extreme gap (the
         // machine slept) cannot freeze the tab replaying it.
         const MAX_CATCHUP = 2000; // ms of real time we'll replay in one tick at most
+        // A frame stamped a moment before a background tick ran does not wind the clock
+        // back (that time would be simulated twice); a mark from another clock altogether
+        // is simply replaced.
+        if (elapsed > 0 || elapsed < -MAX_CATCHUP) this.lastFrameTime = clockNow;
+        if (!(elapsed > 0)) elapsed = 0;
         const simTime = Math.min(elapsed, MAX_CATCHUP);
 
         // Lockstep: the match clock follows the steps a slice actually takes (below), not
@@ -2464,7 +2483,7 @@ class Game {
         // Elapsed time is measured from lastFrameTime, which has been advancing all
         // through the pause. Without this the first tick back would hand the sim the
         // entire pause as one catch-up and the match would jump.
-        this.lastFrameTime = Date.now();
+        this.lastFrameTime = Game.frameNow();
         if (this.ui && this.ui.updateSimSpeedButton) this.ui.updateSimSpeedButton();
     }
     isPaused() { return this.pauseState === 'paused'; }
