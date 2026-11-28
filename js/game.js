@@ -2600,7 +2600,12 @@ class Game {
         if (!this._actionCam || !this.spectatorMode) return;
         const shot = this._director && this._director.shot;
         const key = shot ? shot.key : null;
-        const want = shot && shot.seat != null ? shot.seat : null;
+        let want = shot && shot.seat != null ? shot.seat : null;
+        // With the model's view on, a shot about nobody keeps the seat it shows (b1314).
+        // "Every seat" on the minimap is how a viewer ENDS that view, so opening the map
+        // up for an overview or a brawl switched the view off at the first such shot --
+        // it followed one or two seats and then was gone. A seat's shot still moves it.
+        if (want == null && this.ui && this.ui.seatViewOn && this.ui.seatViewOn()) want = this.minimapFogSeat;
         if (key === this._fogShotKey && want === this._fogShotSeat) return;
         this._fogShotKey = key;
         this._fogShotSeat = want;
