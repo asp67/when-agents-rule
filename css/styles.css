@@ -56,7 +56,13 @@ canvas, button { user-select: none; }
 .screen {
     display: none;
     width: 100vw;
+    /* dvh, not vh (b1313): phone Chrome counts 100vh as if its tab strip and address
+       bar were hidden, so the page ran taller than the screen and the minimap row sat
+       below the edge, at every zoom. dvh is the part actually visible. Every other
+       height taken from the window uses dvh for the same reason; vh stays as the
+       fallback for a browser that does not know dvh. */
     height: 100vh;
+    height: 100dvh;
     position: absolute;
     top: 0;
     left: 0;
@@ -173,7 +179,7 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
     text-align: center;
     padding: 48px 32px;
     width: 100%;
-    max-height: 100vh;
+    max-height: 100dvh;
     overflow-y: auto;
 }
 .selection-content h2 {
@@ -255,7 +261,7 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
     /* Above the Bench panels (1000 to 1002): the comparison card lay on top of it. */
     z-index: 1010;
     width: 300px;
-    max-height: 62vh;
+    max-height: 62dvh;
     overflow: auto;
     background: rgba(16, 20, 34, 0.97);
     border: 1px solid var(--line);
@@ -474,7 +480,7 @@ body.spectator-mode .mm-fog {
     border-radius: 18px;
     padding: 24px 24px 26px;
     z-index: 200;
-    min-width: 420px; max-width: 620px; max-height: 82vh; overflow-y: auto;
+    min-width: 420px; max-width: 620px; max-height: 82dvh; overflow-y: auto;
     box-shadow: var(--shadow);
     backdrop-filter: blur(12px);
 }
@@ -640,7 +646,7 @@ body.spectator-mode .mm-fog {
     gap: 8px;
     pointer-events: none;
     /* End above the minimap (which occupies the bottom ~430px on the right) */
-    max-height: calc(100vh - 462px);
+    max-height: calc(100dvh - 462px);
 }
 
 /* In spectator mode the bottom HUD is hidden, so drop & slightly shrink the
@@ -648,7 +654,7 @@ body.spectator-mode .mm-fog {
    scrolls if cards still don't all fit, so nothing ever overlaps the minimap. */
 body.spectator-mode { --mm-bottom: 16px; --mm-canvas: 210px; --mm-gut: 12px; }
 body.spectator-mode .mm-cols span, body.spectator-mode .mm-rows span { font-size: 8px; }
-body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
+body.spectator-mode .spectator-leaderboard { max-height: calc(100dvh - 262px); }
 
 /* Click-to-inspect card: #unitInfo is reparented out of the hidden bottom HUD
    and floated bottom-centre (minimap is bottom-right, leaderboard top-right, so
@@ -918,7 +924,7 @@ body.spectator-mode #unitInfo.spectator-card {
     top: 14px;
     left: 14px;
     width: 332px;
-    height: calc(100vh - 28px);
+    height: calc(100dvh - 28px);
     z-index: 1000;
     pointer-events: auto;
     display: flex;
@@ -1044,7 +1050,7 @@ body.spectator-mode #unitInfo.spectator-card {
     backdrop-filter: blur(7px);
 }
 
-.ai-decision-log.collapsed { height: auto; max-height: calc(100vh - 28px); }
+.ai-decision-log.collapsed { height: auto; max-height: calc(100dvh - 28px); }
 .ai-log-entries.collapsed { flex: 0 1 auto; }
 .ai-log-entries.collapsed .ai-log-entry { padding: 6px 7px; margin-bottom: 4px; animation: none; }
 .ai-log-entries.collapsed .ai-log-entry:last-child { margin-bottom: 0; }
@@ -1735,7 +1741,7 @@ body.spectator-mode #unitInfo.spectator-card {
 @keyframes ctrlIn { from { opacity: 0; } to { opacity: 1; } }
 .controls-card {
     width: min(460px, 92vw);
-    max-height: 88vh;
+    max-height: 88dvh;
     overflow-y: auto;
     background: linear-gradient(180deg, rgba(22, 28, 52, 0.98), rgba(12, 16, 34, 0.98));
     border: 1px solid rgba(78, 204, 163, 0.35);
@@ -2137,7 +2143,7 @@ body.spectator-mode #unitInfo.spectator-card {
     animation: waIn 0.5s cubic-bezier(.2,.8,.3,1);
 }
 .wonder-announce.wa-out { animation: waOut 0.8s ease forwards; }
-.wa-inner { text-align: center; transform: translateY(-4vh); }
+.wa-inner { text-align: center; transform: translateY(-4dvh); }
 .wa-emoji { font-size: 5em; filter: drop-shadow(0 0 24px rgba(255,212,94,0.85)); animation: waPulse 1.6s ease-in-out infinite; }
 .wa-title {
     margin-top: 6px; font-size: 3em; font-weight: 900; letter-spacing: 1px;
@@ -2223,7 +2229,7 @@ body.spectator-mode #unitInfo.spectator-card {
     right: 330px;
     width: 440px;
     max-width: calc(100vw - 700px);
-    max-height: calc(100vh - 180px);
+    max-height: calc(100dvh - 180px);
     display: flex;
     flex-direction: column;
     z-index: 26;
@@ -2673,7 +2679,7 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bf-kind.is-raw { color: #9fd9c8; border: 1px solid rgba(127, 208, 189, 0.5); }
 .bf-kind.is-harness { color: #1a1408; background: #f2c46a; border: 1px solid #f2c46a; }
 /* Beside the leaderboard (16 + 304). */
-.bench-right { right: 328px; width: 344px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 92px) - 312px); }
+.bench-right { right: 328px; width: 344px; max-height: calc(100dvh / var(--ui-scale, 1) - var(--bench-top, 92px) - 312px); }
 /* The transcript panel opens beside the leaderboard too (right: 330px, 440 wide). Where
    there is room the matrix steps aside; where there is not, the transcript lies over it
    until it is closed. */
@@ -3124,7 +3130,7 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 .update-notice { margin-bottom: 10px; letter-spacing: normal; color: var(--gold-2); }
 .update-notice[hidden] { display: none; }
 .update-notice summary { cursor: pointer; padding: 8px 10px; border: 1px solid #887044; border-radius: 6px; background: #171d25; }
-.update-notice[open] { width: min(380px, calc(100vw - 32px)); padding: 12px; box-sizing: border-box; background: #171d25; border: 1px solid #887044; border-radius: 8px; max-height: 65vh; overflow: auto; }
+.update-notice[open] { width: min(380px, calc(100vw - 32px)); padding: 12px; box-sizing: border-box; background: #171d25; border: 1px solid #887044; border-radius: 8px; max-height: 65dvh; overflow: auto; }
 .update-notice p { line-height: 1.6; color: #d6d6d6; margin: 12px 0; }
 .update-notice input { width: 100%; box-sizing: border-box; background: #0e131a; color: #fff; padding: 9px; border: 1px solid #62666d; border-radius: 4px; font-family: monospace; }
 .update-actions { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
@@ -3463,15 +3469,15 @@ body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
 .broadcast-board, .broadcast-wonder, .chronicle-caption { zoom: var(--ui-scale); }
 /* The decision log fills the window's height; under zoom that height is counted in its
    own shrunken units, so it is divided back out, or the log would end at 72 %. */
-.ai-decision-log { height: calc(100vh / var(--ui-scale) - 28px); }
-.ai-decision-log.collapsed { max-height: calc(100vh / var(--ui-scale) - 28px); }
+.ai-decision-log { height: calc(100dvh / var(--ui-scale) - 28px); }
+.ai-decision-log.collapsed { max-height: calc(100dvh / var(--ui-scale) - 28px); }
 /* The same for every limit taken from the window: the space it reserves (the minimap
    under the leaderboard, the side panels beside the transcript) is scaled too, so the
    window is divided back out. Otherwise a smaller leaderboard scrolled exactly where
    the full-size one did, with room to spare below it. */
-.spectator-leaderboard { max-height: calc(100vh / var(--ui-scale) - 462px); }
+.spectator-leaderboard { max-height: calc(100dvh / var(--ui-scale) - 462px); }
 /* (Its spectator-mode limit lives in antiquity.css, which loads last; divided there.) */
-.tv { max-width: calc(100vw / var(--ui-scale) - 700px); max-height: calc(100vh / var(--ui-scale) - 180px); }
+.tv { max-width: calc(100vw / var(--ui-scale) - 700px); max-height: calc(100dvh / var(--ui-scale) - 180px); }
 .intent-bubble { transform-origin: 50% 100%; }
 .intent-bubbles .intent-bubble { transform: translate(-50%, calc(-100% - 18px)) scale(var(--ui-scale)); }
 /* A plan (b1000): on the edge of the view, pinned by its top-left corner (the overlay
@@ -3493,7 +3499,7 @@ body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
 
 /* --- MCP setup assistant (js/mcp-ui.js) --- */
 .mcp-assist-btn { margin: 4px 0 10px; }
-.mcp-assist .mcp-assist-box { width: min(760px, 94vw); max-height: 90vh; overflow-y: auto; text-align: left; }
+.mcp-assist .mcp-assist-box { width: min(760px, 94vw); max-height: 90dvh; overflow-y: auto; text-align: left; }
 .mcp-assist .confirm-title { text-align: center; margin-bottom: 14px; }
 .mcp-as-step { border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 14px; margin: 0 0 10px; background: rgba(255,255,255,0.02); }
 .mcp-as-step h4 { margin: 0; font-size: 1em; color: #e6ecf8; }
